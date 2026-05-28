@@ -1,0 +1,39 @@
+import { IWhatsAppProvider } from './IWhatsAppProvider'
+import { MockWhatsAppProvider } from './MockWhatsAppProvider'
+import { logger } from '../../utils/logger'
+
+type ProviderType = 'mock' | 'evolution' | 'baileys'
+
+let instance: IWhatsAppProvider | null = null
+
+export function getWhatsAppProvider(): IWhatsAppProvider {
+  if (instance) return instance
+
+  const providerType = (process.env.WHATSAPP_PROVIDER || 'mock') as ProviderType
+
+  logger.info(`[WhatsAppFactory] Usando provider: ${providerType}`)
+
+  switch (providerType) {
+    case 'mock':
+      instance = new MockWhatsAppProvider()
+      break
+    // Futuros providers:
+    // case 'evolution':
+    //   instance = new EvolutionProvider()
+    //   break
+    // case 'baileys':
+    //   instance = new BaileysProvider()
+    //   break
+    default:
+      logger.warn(`Provider desconhecido: ${providerType}. Usando mock.`)
+      instance = new MockWhatsAppProvider()
+  }
+
+  return instance
+}
+
+export function getMockProvider(): MockWhatsAppProvider {
+  const provider = getWhatsAppProvider()
+  if (provider instanceof MockWhatsAppProvider) return provider
+  throw new Error('Provider atual não é o MockProvider')
+}

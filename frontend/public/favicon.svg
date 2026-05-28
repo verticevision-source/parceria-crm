@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%"   stop-color="#F5D06B"/>
+      <stop offset="50%"  stop-color="#C9952A"/>
+      <stop offset="100%" stop-color="#8B6010"/>
+    </linearGradient>
+  </defs>
+  <!-- Fundo azul escuro -->
+  <circle cx="50" cy="50" r="50" fill="#0a1628"/>
+  <!-- Anel dourado -->
+  <circle cx="50" cy="50" r="46" fill="none" stroke="url(#g)" stroke-width="6"/>
+  <!-- Interno navy -->
+  <circle cx="50" cy="50" r="38" fill="#122050"/>
+  <!-- Aperto de mão simplificado (dourado) -->
+  <path d="M18 54 Q24 46 32 46 L44 46 Q47 46 47 50 L47 56 Q47 60 44 60 L32 60 Q24 60 18 56Z" fill="url(#g)"/>
+  <path d="M82 54 Q76 46 68 46 L56 46 Q53 46 53 50 L53 56 Q53 60 56 60 L68 60 Q76 60 82 56Z" fill="url(#g)"/>
+  <ellipse cx="50" cy="53" rx="11" ry="8" fill="url(#g)"/>
+</svg>

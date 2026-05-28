@@ -1,0 +1,68 @@
+import { Routes, Route, Navigate } from 'react-router-dom'
+import { useAuth } from './contexts/AuthContext'
+import Layout from './components/Layout/Layout'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Attendance from './pages/Attendance'
+import CRM from './pages/CRM'
+import Contacts from './pages/Contacts'
+import Users from './pages/Users'
+import WhatsAppConfig from './pages/WhatsAppConfig'
+import Settings from './pages/Settings'
+import { PageLoader } from './components/UI/LoadingSpinner'
+
+function PrivateRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth()
+  if (isLoading) return <PageLoader />
+  if (!user) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isAdmin } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  if (!isAdmin) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
+export default function App() {
+  const { user, isLoading } = useAuth()
+
+  if (isLoading) return <PageLoader />
+
+  return (
+    <Routes>
+      <Route
+        path="/login"
+        element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+      />
+
+      <Route
+        element={
+          <PrivateRoute>
+            <Layout />
+          </PrivateRoute>
+        }
+      >
+        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/attendance" element={<Attendance />} />
+        <Route path="/crm" element={<CRM />} />
+        <Route path="/contacts" element={<Contacts />} />
+        <Route path="/whatsapp" element={<WhatsAppConfig />} />
+        <Route path="/settings" element={<Settings />} />
+
+        <Route
+          path="/users"
+          element={
+            <AdminRoute>
+              <Users />
+            </AdminRoute>
+          }
+        />
+      </Route>
+
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+    </Routes>
+  )
+}

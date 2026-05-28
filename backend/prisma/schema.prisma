@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+}
+
+enum SessionStatus {
+  CONNECTED
+  DISCONNECTED
+  WAITING_QR
+  ERROR
+}
+
+enum ConversationStatus {
+  OPEN
+  PENDING
+  CLOSED
+}
+
+enum LeadStatus {
+  OPEN
+  WON
+  LOST
+}
+
+enum MessageDirection {
+  IN
+  OUT
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  AUDIO
+  DOCUMENT
+  VIDEO
+}
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(USER)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  whatsappSessions WhatsAppSession[]
+  conversations    Conversation[]
+  messages         Message[]
+  contacts         Contact[]
+  leads            Lead[]            @relation("ResponsibleUser")
+  crmNotes         CRMNote[]
+  auditLogs        AuditLog[]
+
+  @@map("users")
+}
+
+model WhatsAppSession {
+  id             String        @id @default(uuid())
+  userId         String
+  phoneNumber    String?
+  status         SessionStatus @default(WAITING_QR)
+  qrCode         String?       @db.Text
+  provider       String        @default("mock")
+  connectedAt    DateTime?
+  disconnectedAt DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  messages      Message[]
+
+  @@map("whatsapp_sessions")
+}
+
+model Contact {
+  id             String   @id @default(uuid())
+  userId         String
+  name           String
+  phone          String
+  city           String?
+  documentNumber String?
+  notes          String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations Conversation[]
+  messages      Message[]
+  leads         Lead[]
+  tags          ContactTag[]
+
+  @@map("contacts")
+}
+
+model Conversation {
+  id                String             @id @default(uuid())
+  userId            String
+  whatsappSessionId String
+  contactId         String?
+  leadId            String?
+  status            ConversationStatus @default(OPEN)
+  lastMessage       String?
+  lastMessageAt     DateTime?
+  unreadCount       Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappSession WhatsAppSession @relation(fields: [whatsappSessionId], references: [id])
+  contact         Contact?        @relation(fields: [contactId], references: [id])
+  lead            Lead?           @relation(fields: [leadId], references: [id])
+  messages        Message[]
+
+  @@map("conversations")
+}
+
+model Message {
+  id                String           @id @default(uuid())
+  conversationId    String
+  userId            String
+  whatsappSessionId String
+  contactId         String?
+  direction         MessageDirection
+  type              MessageType      @default(TEXT)
+  textBody          String?          @db.Text
+  mediaUrl          String?
+  externalMessageId String?
+  sentAt            DateTime?
+  createdAt         DateTime         @default(now())
+
+  conversation    Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user            User            @relation(fields: [userId], references: [id])
+  whatsappSession WhatsAppSession @relation(fields: [whatsappSessionId], references: [id])
+  contact         Contact?        @relation(fields: [contactId], references: [id])
+
+  @@map("messages")
+}
+
+model PipelineStage {
+  id        String   @id @default(uuid())
+  name      String
+  order     Int
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads Lead[]
+
+  @@map("pipeline_stages")
+}
+
+model Lead {
+  id                String     @id @default(uuid())
+  contactId         String
+  responsibleUserId String
+  pipelineStageId   String?
+  status            LeadStatus @default(OPEN)
+  source            String?
+  value             Float?
+  notes             String?    @db.Text
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  lastInteractionAt DateTime?
+
+  contact         Contact        @relation(fields: [contactId], references: [id])
+  responsibleUser User           @relation("ResponsibleUser", fields: [responsibleUserId], references: [id])
+  pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id])
+  conversations   Conversation[]
+  crmNotes        CRMNote[]
+
+  @@map("leads")
+}
+
+model CRMNote {
+  id        String   @id @default(uuid())
+  leadId    String
+  userId    String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("crm_notes")
+}
+
+model Tag {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  color     String   @default("#6366f1")
+  createdAt DateTime @default(now())
+
+  contacts ContactTag[]
+
+  @@map("tags")
+}
+
+model ContactTag {
+  id        String @id @default(uuid())
+  contactId String
+  tagId     String
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tag     Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([contactId, tagId])
+  @@map("contact_tags")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  action    String
+  entity    String
+  entityId  String?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}

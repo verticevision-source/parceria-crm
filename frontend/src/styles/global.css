@@ -1,0 +1,187 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body, #root {
+    height: 100%;
+    background-color: #080d17;
+    color: #f0f4ff;
+    font-family: 'Inter', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  ::selection { background: rgba(99,102,241,0.35); color: #f0f4ff; }
+
+  ::-webkit-scrollbar { width: 5px; height: 5px; }
+  ::-webkit-scrollbar-track { background: #080d17; }
+  ::-webkit-scrollbar-thumb { background: #1e2d4a; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover { background: #2a3f66; }
+}
+
+@layer components {
+
+  /* ── Cards ─────────────────────────────── */
+  .card {
+    @apply bg-bg-secondary rounded-2xl border border-border p-6 shadow-card;
+    background: linear-gradient(135deg, #0f1622 0%, #111827 100%);
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.025) 50%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .card-gold {
+    @apply card border-border-gold;
+    box-shadow: 0 4px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(201,149,42,0.15);
+  }
+
+  /* ── Stat Cards ─────────────────────────── */
+  .stat-card {
+    @apply card flex flex-col gap-3;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .stat-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 48px rgba(0,0,0,0.6);
+  }
+
+  /* ── Buttons ────────────────────────────── */
+  .btn-primary {
+    @apply font-semibold px-5 py-2.5 rounded-xl transition-all duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.35);
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: linear-gradient(135deg, #5254cc 0%, #6d28d9 100%);
+    box-shadow: 0 6px 24px rgba(99,102,241,0.5);
+    transform: translateY(-1px);
+  }
+  .btn-primary:active:not(:disabled) { transform: translateY(0); }
+
+  .btn-gold {
+    @apply font-semibold px-5 py-2.5 rounded-xl transition-all duration-200
+           disabled:opacity-40 disabled:cursor-not-allowed;
+    background: linear-gradient(135deg, #C9952A 0%, #F5D06B 50%, #C9952A 100%);
+    background-size: 200% auto;
+    color: #080d17;
+    box-shadow: 0 4px 16px rgba(201,149,42,0.4);
+  }
+  .btn-gold:hover:not(:disabled) {
+    background-position: right center;
+    box-shadow: 0 6px 24px rgba(201,149,42,0.55);
+    transform: translateY(-1px);
+  }
+
+  .btn-ghost {
+    @apply bg-transparent font-medium px-5 py-2.5 rounded-xl transition-all duration-200
+           text-text-secondary hover:text-text-primary hover:bg-bg-hover;
+  }
+
+  .btn-danger {
+    @apply font-medium px-5 py-2.5 rounded-xl transition-all duration-200;
+    background: rgba(239,68,68,0.12);
+    color: #f87171;
+    border: 1px solid rgba(239,68,68,0.25);
+  }
+  .btn-danger:hover { background: rgba(239,68,68,0.2); }
+
+  /* ── Inputs ─────────────────────────────── */
+  .input-field {
+    @apply w-full rounded-xl px-4 py-3 text-text-primary placeholder-text-muted
+           focus:outline-none transition-all duration-200;
+    background: rgba(8,13,23,0.8);
+    border: 1px solid #1e2d4a;
+  }
+  .input-field:focus {
+    border-color: #6366f1;
+    box-shadow: 0 0 0 3px rgba(99,102,241,0.15);
+  }
+
+  /* ── Badges ─────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold;
+  }
+
+  /* ── Sidebar links ──────────────────────── */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 cursor-pointer;
+    color: #4a6080;
+  }
+  .sidebar-link:hover {
+    background: rgba(30,45,74,0.7);
+    color: #8fa3c8;
+  }
+  .sidebar-link.active {
+    background: linear-gradient(135deg, rgba(99,102,241,0.18) 0%, rgba(124,58,237,0.12) 100%);
+    color: #818cf8;
+    border: 1px solid rgba(99,102,241,0.25);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .sidebar-link.active-gold {
+    background: linear-gradient(135deg, rgba(201,149,42,0.18) 0%, rgba(245,208,107,0.1) 100%);
+    color: #F5D06B;
+    border: 1px solid rgba(201,149,42,0.3);
+  }
+
+  /* ── Chat bubbles ───────────────────────── */
+  .message-bubble-in {
+    @apply rounded-2xl rounded-tl-sm px-4 py-3;
+    background: #162035;
+    border: 1px solid #1e2d4a;
+    color: #f0f4ff;
+    max-width: 75%;
+  }
+  .message-bubble-out {
+    @apply rounded-2xl rounded-tr-sm px-4 py-3;
+    background: linear-gradient(135deg, #6366f1 0%, #7c3aed 100%);
+    color: #fff;
+    max-width: 75%;
+    box-shadow: 0 4px 16px rgba(99,102,241,0.3);
+  }
+
+  /* ── Kanban card ────────────────────────── */
+  .kanban-card {
+    @apply rounded-xl p-4 cursor-grab active:cursor-grabbing transition-all duration-200;
+    background: linear-gradient(135deg, #0f1622 0%, #111827 100%);
+    border: 1px solid #1e2d4a;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.4);
+  }
+  .kanban-card:hover {
+    border-color: rgba(99,102,241,0.35);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5), 0 0 0 1px rgba(99,102,241,0.2);
+    transform: translateY(-1px);
+  }
+
+  /* ── Number highlight ───────────────────── */
+  .stat-number {
+    @apply text-4xl font-extrabold tracking-tight;
+    color: #f0f4ff;
+    letter-spacing: -0.02em;
+  }
+}
+
+/* Chat scroll behavior */
+.chat-messages { scroll-behavior: smooth; }
+
+/* Glow line */
+.glow-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(99,102,241,0.5), transparent);
+}
+.glow-divider-gold {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(201,149,42,0.5), transparent);
+}
