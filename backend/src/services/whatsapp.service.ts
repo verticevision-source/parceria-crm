@@ -200,6 +200,20 @@ export class WhatsAppService {
     })
 
     if (!session) return null
+
+    // Fetch live QR from provider (WAHA generates it dynamically)
+    const provider = getWhatsAppProvider()
+    const liveQr = await provider.getQRCode(session.id)
+
+    if (liveQr) {
+      await prisma.whatsAppSession.update({
+        where: { id: session.id },
+        data: { qrCode: liveQr },
+      })
+      return liveQr
+    }
+
+    // Fall back to DB-cached QR if provider returned null
     return session.qrCode
   }
 
