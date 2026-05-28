@@ -45,16 +45,37 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         instanceName: sessionId,
         integration: 'WHATSAPP-BAILEYS',
         ...(webhookUrl && {
-          webhook: webhookUrl,
-          webhookByEvents: false,
-          events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+          webhook: {
+            url: webhookUrl,
+            byEvents: false,
+            base64: false,
+            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+          },
         }),
       })
       logger.info(`[Evolution] Instância criada: ${sessionId}`)
     } catch (err) {
-      // Instância pode já existir — OK
-      logger.info(`[Evolution] Instância já existe ou erro ao criar: ${sessionId}`)
+      // Instância pode já existir — re-configure webhook
+      logger.info(`[Evolution] Instância já existe, reconfigurando webhook: ${sessionId}`)
+      if (webhookUrl) {
+        try {
+          await this.req('POST', `/webhook/set/${sessionId}`, {
+            webhook: {
+              enabled: true,
+              url: webhookUrl,
+              webhookByEvents: false,
+              webhookBase64: false,
+              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+            },
+          })
+        } catch {}
+      }
     }
+
+    // Trigger connection to start QR code generation
+    try {
+      await this.req('GET', `/instance/connect/${sessionId}`)
+    } catch {}
 
     return { sessionId, status: 'WAITING_QR' }
   }
@@ -90,8 +111,10 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   async getQRCode(sessionId: string): Promise<string | null> {
     try {
+      // Trigger connection attempt (generates QR if not connected)
       const data = await this.req<any>('GET', `/instance/connect/${sessionId}`)
-      return data?.base64 || null
+      // v2 returns { count, base64 } or { pairingCode, code, count }
+      return data?.base64 || data?.code || null
     } catch {
       return null
     }
