@@ -25,6 +25,7 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
   private get headers() {
     return {
       'Content-Type': 'application/json',
+      'Accept': 'application/json',
       ...(this.apiKey ? { 'X-Api-Key': this.apiKey } : {}),
     }
   }
