@@ -3,6 +3,7 @@ import cors from 'cors'
 import morgan from 'morgan'
 import 'dotenv/config'
 import routes from './routes'
+import webhookRoutes from './routes/webhook.routes'
 import { errorHandler } from './middlewares/errorHandler.middleware'
 import { logger } from './utils/logger'
 
@@ -23,6 +24,9 @@ if (process.env.NODE_ENV !== 'test') {
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() })
 })
+
+// Webhook público — sem JWT (Evolution API chama diretamente)
+app.use('/api/webhook', webhookRoutes)
 
 app.use('/api', routes)
 

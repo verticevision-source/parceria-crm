@@ -1,5 +1,6 @@
 import { IWhatsAppProvider } from './IWhatsAppProvider'
 import { MockWhatsAppProvider } from './MockWhatsAppProvider'
+import { EvolutionWhatsAppProvider } from './EvolutionWhatsAppProvider'
 import { logger } from '../../utils/logger'
 
 type ProviderType = 'mock' | 'evolution' | 'baileys'
@@ -14,16 +15,12 @@ export function getWhatsAppProvider(): IWhatsAppProvider {
   logger.info(`[WhatsAppFactory] Usando provider: ${providerType}`)
 
   switch (providerType) {
+    case 'evolution':
+      instance = new EvolutionWhatsAppProvider()
+      break
     case 'mock':
       instance = new MockWhatsAppProvider()
       break
-    // Futuros providers:
-    // case 'evolution':
-    //   instance = new EvolutionProvider()
-    //   break
-    // case 'baileys':
-    //   instance = new BaileysProvider()
-    //   break
     default:
       logger.warn(`Provider desconhecido: ${providerType}. Usando mock.`)
       instance = new MockWhatsAppProvider()
