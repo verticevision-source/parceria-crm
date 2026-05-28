@@ -1,9 +1,10 @@
 import { Router } from 'express'
-import { evolutionWebhook } from '../controllers/webhook.controller'
+import { evolutionWebhook, wahaWebhook } from '../controllers/webhook.controller'
 
 const router = Router()
 
-// Rota pública — sem autenticação JWT (Evolution API chama diretamente)
+// Rotas públicas — sem autenticação JWT (chamadas diretamente pelo provedor WhatsApp)
 router.post('/evolution', evolutionWebhook)
+router.post('/waha', wahaWebhook)
 
 export default router
