@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import {
   MessageSquare, Users, Briefcase, Wifi, WifiOff,
   TrendingUp, Clock, CheckCircle, AlertCircle,
-  MessageCircle, ArrowUpRight
+  MessageCircle, ArrowUpRight, type LucideIcon
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -19,7 +19,7 @@ import { ptBR } from 'date-fns/locale'
 interface StatCardProps {
   title: string
   value: number | string
-  icon: React.ComponentType<{ size?: number; className?: string }>
+  icon: LucideIcon
   color?: 'primary' | 'success' | 'warning' | 'danger' | 'info' | 'gold'
   subtitle?: string
   trend?: number
