@@ -1,0 +1,48 @@
+name: parceria-crm-api
+region: nyc
+
+services:
+  - name: api
+    source_dir: backend
+    github:
+      branch: master
+      deploy_on_push: true
+      repo: verticevision-source/parceria-crm
+    build_command: npm ci --include=dev && npx prisma generate && npm run build
+    run_command: npx prisma migrate deploy && node dist/prisma/seed.js && node dist/server.js
+    http_port: 3001
+    instance_count: 1
+    instance_size_slug: basic-xxs
+    health_check:
+      http_path: /health
+      initial_delay_seconds: 30
+      period_seconds: 30
+    envs:
+      - key: NODE_ENV
+        value: production
+        scope: RUN_AND_BUILD_TIME
+      - key: JWT_SECRET
+        value: parceriaCRM_2024_K9x#mPqR!secretKey_DigitalOcean
+        scope: RUN_AND_BUILD_TIME
+      - key: WHATSAPP_PROVIDER
+        value: waha
+        scope: RUN_AND_BUILD_TIME
+      - key: WAHA_API_URL
+        value: "http://165.245.253.188:3000"
+        scope: RUN_AND_BUILD_TIME
+      - key: WAHA_API_KEY
+        value: parceria-crm-waha-secret-2024
+        scope: RUN_AND_BUILD_TIME
+      - key: BACKEND_URL
+        value: "https://parceria-crm-api-v5frz.ondigitalocean.app"
+        scope: RUN_AND_BUILD_TIME
+      - key: DATABASE_URL
+        value: "postgresql://neondb_owner:npg_EJvuhHa6jcm9@ep-small-math-aqleoyxp.c-8.us-east-1.aws.neon.tech/neondb?sslmode=require"
+        scope: RUN_AND_BUILD_TIME
+        type: SECRET
+      - key: FRONTEND_URL
+        value: "https://parceria-crm-web-qshjo.ondigitalocean.app"
+        scope: RUN_AND_BUILD_TIME
+      - key: PORT
+        value: "3001"
+        scope: RUN_AND_BUILD_TIME
