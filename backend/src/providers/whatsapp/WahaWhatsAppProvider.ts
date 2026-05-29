@@ -234,17 +234,39 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
         ? rawFrom  // keep full LID JID so sendMessage can use it directly
         : rawFrom.replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '')
 
-      // Log media fields for debugging
-      if (msg.hasMedia) {
-        logger.info(`[WAHA] Media msg fields: hasMedia=${msg.hasMedia} mediaUrl=${msg.mediaUrl} type=${msg.type} body=${msg.body} id=${msg.id}`)
+      // Detect media type and build URL when WAHA doesn't include mediaUrl in webhook
+      let mediaUrl: string | undefined = msg.mediaUrl || undefined
+      const mediaType = this.detectType(msg)
+
+      if (msg.hasMedia && !mediaUrl && msg.id) {
+        // WAHA stores files as /tmp/whatsapp-files/{session}/{hexId}.{ext}
+        // We serve them via nginx on port 3001
+        // Message ID format: false_{jid}_{hexId}
+        const hexId = (msg.id as string).split('_').pop() || ''
+        // Detect extension from _data mimetype or body
+        const mimetype: string = msg._data?.mimetype || msg._data?.message?.imageMessage?.mimetype
+          || msg._data?.message?.videoMessage?.mimetype
+          || msg._data?.message?.audioMessage?.mimetype
+          || msg._data?.message?.documentMessage?.mimetype || ''
+        const ext = mimetype.includes('png') ? 'png'
+          : mimetype.includes('mp4') || mimetype.includes('video') ? 'mp4'
+          : mimetype.includes('ogg') || mimetype.includes('audio') ? 'ogg'
+          : mimetype.includes('pdf') ? 'pdf'
+          : mimetype.includes('webp') ? 'webp'
+          : 'jpeg'
+        const wahaMediaServerUrl = process.env.WAHA_MEDIA_SERVER_URL || 'http://165.245.253.188:3001'
+        if (hexId) {
+          mediaUrl = `${wahaMediaServerUrl}/default/${hexId}.${ext}`
+          logger.info(`[WAHA] Media URL construída: ${mediaUrl} (mimetype=${mimetype || 'desconhecido'})`)
+        }
       }
 
       const incoming: IncomingMessage = {
         externalId: msg.id || `waha_${Date.now()}`,
         from,
-        body: msg.body || (msg.hasMedia ? '[mídia]' : ''),
-        type: this.detectType(msg),
-        mediaUrl: msg.mediaUrl || undefined,
+        body: msg.body || (msg.hasMedia ? '' : ''),
+        type: mediaType,
+        mediaUrl,
         timestamp: new Date(msg.timestamp ? msg.timestamp * 1000 : Date.now()),
       }
 
@@ -270,11 +292,28 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
 
   private detectType(msg: any): IncomingMessage['type'] {
     if (!msg) return 'TEXT'
+    // Check top-level type first
     const type = msg.type
     if (type === 'image') return 'IMAGE'
     if (type === 'audio' || type === 'ptt') return 'AUDIO'
     if (type === 'document') return 'DOCUMENT'
     if (type === 'video') return 'VIDEO'
+    // NOWEB engine: detect from _data.message keys
+    if (msg._data?.message) {
+      const keys = Object.keys(msg._data.message)
+      if (keys.some(k => k.includes('image'))) return 'IMAGE'
+      if (keys.some(k => k.includes('video'))) return 'VIDEO'
+      if (keys.some(k => k.includes('audio') || k.includes('ptt'))) return 'AUDIO'
+      if (keys.some(k => k.includes('document'))) return 'DOCUMENT'
+    }
+    // Also check hasMedia + mimetype
+    if (msg.hasMedia) {
+      const mime: string = msg._data?.mimetype || ''
+      if (mime.startsWith('image/')) return 'IMAGE'
+      if (mime.startsWith('video/')) return 'VIDEO'
+      if (mime.startsWith('audio/')) return 'AUDIO'
+      return 'IMAGE' // default for unknown media
+    }
     return 'TEXT'
   }
 }

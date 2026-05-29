@@ -33,6 +33,9 @@ services:
       - key: WAHA_API_KEY
         value: parceria-crm-waha-secret-2024
         scope: RUN_AND_BUILD_TIME
+      - key: WAHA_MEDIA_SERVER_URL
+        value: "http://165.245.253.188:3001"
+        scope: RUN_AND_BUILD_TIME
       - key: BACKEND_URL
         value: "https://parceria-crm-api-v5frz.ondigitalocean.app"
         scope: RUN_AND_BUILD_TIME
