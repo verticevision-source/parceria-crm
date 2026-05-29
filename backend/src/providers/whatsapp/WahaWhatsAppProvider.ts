@@ -67,20 +67,52 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
         }
       : {}
 
-    // Try to create the session first
+    // Check current state first
+    let currentStatus: string | null = null
     try {
-      await this.req('POST', '/api/sessions', {
-        name: session,
-        config: sessionConfig,
-      })
-      logger.info(`[WAHA] Sessão criada: ${session}`)
+      const current = await this.req<any>('GET', `/api/sessions/${session}`)
+      currentStatus = current?.status || null
     } catch {
-      // Session already exists — update its config
+      // Session doesn't exist yet
+    }
+
+    if (!currentStatus) {
+      // Create new session
+      try {
+        await this.req('POST', '/api/sessions', {
+          name: session,
+          config: sessionConfig,
+        })
+        logger.info(`[WAHA] Sessão criada: ${session}`)
+      } catch (err) {
+        logger.warn(`[WAHA] Erro ao criar sessão: ${err}`)
+      }
+    } else {
+      // Session exists — update config
       try {
         await this.req('PUT', `/api/sessions/${session}`, {
           config: sessionConfig,
         })
-        logger.info(`[WAHA] Sessão atualizada: ${session}`)
+        logger.info(`[WAHA] Config da sessão atualizada: ${session} (status: ${currentStatus})`)
+      } catch {}
+    }
+
+    // If already scanning QR, no need to restart (just return)
+    if (currentStatus === 'SCAN_QR_CODE') {
+      logger.info(`[WAHA] Sessão já está aguardando QR: ${session}`)
+      return { sessionId, status: 'WAITING_QR' }
+    }
+
+    // If WORKING (connected), return connected status
+    if (currentStatus === 'WORKING') {
+      logger.info(`[WAHA] Sessão já conectada: ${session}`)
+      return { sessionId, status: 'CONNECTED' }
+    }
+
+    // If FAILED or STOPPED, stop first then restart
+    if (currentStatus === 'FAILED' || currentStatus === 'STOPPED') {
+      try {
+        await this.req('POST', `/api/sessions/${session}/stop`)
       } catch {}
     }
 
@@ -89,7 +121,7 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
       await this.req('POST', `/api/sessions/${session}/start`)
       logger.info(`[WAHA] Sessão iniciada: ${session}`)
     } catch (err) {
-      logger.info(`[WAHA] Sessão já iniciada ou erro ao iniciar: ${err}`)
+      logger.warn(`[WAHA] Erro ao iniciar sessão: ${err}`)
     }
 
     return { sessionId, status: 'WAITING_QR' }
@@ -99,10 +131,11 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
     const session = this.getWahaSession(sessionId)
     try {
       await this.req('POST', `/api/sessions/${session}/stop`)
-    } catch {}
-    try {
-      await this.req('DELETE', `/api/sessions/${session}`)
-    } catch {}
+      logger.info(`[WAHA] Sessão parada: ${session}`)
+    } catch (err) {
+      logger.info(`[WAHA] Sessão não estava rodando ou erro ao parar: ${err}`)
+    }
+    // Do NOT delete the session — keep it so it can be restarted without re-creating
     logger.info(`[WAHA] Sessão desconectada: ${session}`)
   }
 
@@ -128,14 +161,31 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
 
   async getQRCode(sessionId: string): Promise<string | null> {
     const session = this.getWahaSession(sessionId)
+
+    // Check session state first — restart if FAILED so QR can be regenerated
+    try {
+      const state = await this.req<any>('GET', `/api/sessions/${session}`)
+      const wahaStatus = state?.status
+      if (wahaStatus === 'FAILED' || wahaStatus === 'STOPPED') {
+        logger.info(`[WAHA] Sessão FAILED/STOPPED — reiniciando para gerar novo QR`)
+        try { await this.req('POST', `/api/sessions/${session}/stop`) } catch {}
+        await this.req('POST', `/api/sessions/${session}/start`)
+        // Give it a moment to generate the QR
+        await new Promise(resolve => setTimeout(resolve, 2000))
+      }
+    } catch (err) {
+      logger.warn(`[WAHA] Erro ao verificar estado da sessão: ${err}`)
+    }
+
     try {
       const data = await this.req<any>('GET', `/api/${session}/auth/qr`)
-      // Returns { mimetype: 'image/png', data: 'base64...' }
+      // Returns { mimetype: 'image/png', data: 'base64...' } when Accept: application/json
       if (data?.data) {
         return `data:${data.mimetype || 'image/png'};base64,${data.data}`
       }
       return null
-    } catch {
+    } catch (err) {
+      logger.warn(`[WAHA] Erro ao obter QR code: ${err}`)
       return null
     }
   }
