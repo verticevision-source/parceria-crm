@@ -228,8 +228,33 @@ export class WhatsAppService {
 
     if (!session) return null
 
-    // Fetch live QR from provider (WAHA generates it dynamically)
     const provider = getWhatsAppProvider()
+
+    // Sync live WAHA status — session might have connected while DB wasn't updated
+    const liveStatus = await provider.getStatus(session.id)
+    if (liveStatus.status === 'CONNECTED') {
+      logger.info(`[WhatsAppService] WAHA conectado mas DB desatualizado — sincronizando`)
+      await prisma.whatsAppSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'CONNECTED',
+          phoneNumber: liveStatus.phoneNumber || null,
+          connectedAt: new Date(),
+          qrCode: null,
+        },
+      })
+      if (io) {
+        io.to(`user:${session.userId}`).emit('whatsapp-status', {
+          sessionId: session.id,
+          status: 'CONNECTED',
+          phoneNumber: liveStatus.phoneNumber,
+        })
+        logger.info(`[WhatsAppService] Status CONNECTED emitido via socket para user ${session.userId}`)
+      }
+      return null  // Already connected — no QR needed
+    }
+
+    // Fetch live QR from provider (WAHA generates it dynamically)
     const liveQr = await provider.getQRCode(session.id)
 
     if (liveQr) {
