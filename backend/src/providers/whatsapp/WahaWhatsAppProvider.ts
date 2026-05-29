@@ -192,10 +192,11 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
 
   async sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult> {
     const session = this.getWahaSession(sessionId)
-    // WAHA expects numbers in format: 5511999999999@c.us
-    // Strip any existing suffix (@c.us, @s.whatsapp.net, @lid) and re-add @c.us
-    // Groups (@g.us) are passed through as-is
-    const toFormatted = to.includes('@g.us') ? to : `${to.replace(/@.*$/, '')}@c.us`
+    // Route using the exact JID when available (@lid, @g.us).
+    // For plain phone numbers (no @), add @c.us suffix.
+    const toFormatted = to.includes('@')
+      ? to          // already has a suffix (@c.us, @lid, @g.us) — use as-is
+      : `${to}@c.us` // bare number — add @c.us
 
     const data = await this.req<any>('POST', '/api/sendText', {
       session,
@@ -226,9 +227,16 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
       const msg = data.payload
       if (!msg || msg.fromMe) return
 
+      // Preserve @lid JIDs as-is (needed for routing replies back).
+      // Strip @c.us / @s.whatsapp.net — those are just format suffixes on real numbers.
+      const rawFrom = (msg.from || '') as string
+      const from = rawFrom.endsWith('@lid')
+        ? rawFrom  // keep full LID JID so sendMessage can use it directly
+        : rawFrom.replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '')
+
       const incoming: IncomingMessage = {
         externalId: msg.id || `waha_${Date.now()}`,
-        from: (msg.from || '').replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, ''),
+        from,
         body: msg.body || '[mídia]',
         type: this.detectType(msg),
         timestamp: new Date(msg.timestamp ? msg.timestamp * 1000 : Date.now()),

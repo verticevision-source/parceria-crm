@@ -101,6 +101,8 @@ export default function Attendance() {
     socket.on('new-message', ({ message, conversation }: { message: Message; conversation: Conversation }) => {
       setMessages((prev) => {
         if (selected?.id === conversation.id) {
+          // Deduplicate by message ID
+          if (prev.some((m) => m.id === message.id)) return prev
           return [...prev, message]
         }
         return prev
@@ -159,11 +161,12 @@ export default function Attendance() {
       }
 
       const { whatsappApi } = await import('../services/api')
-      const res = await whatsappApi.sendMessage(
+      await whatsappApi.sendMessage(
         selected.contact?.phone || '',
         body
       )
-      setMessages((prev) => [...prev, res.data.data])
+      // Don't manually push message here — the socket 'new-message' event will add it
+      // to avoid duplicates (backend emits socket after saving to DB)
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selected.id
