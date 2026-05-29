@@ -15,6 +15,7 @@ export class ConversationService {
         contact: { select: { id: true, name: true, phone: true } },
         user: { select: { id: true, name: true } },
         whatsappSession: { select: { id: true, phoneNumber: true, status: true } },
+        tags: { include: { tag: true } },
         _count: { select: { messages: true } },
       },
       orderBy: { lastMessageAt: 'desc' },
@@ -31,6 +32,7 @@ export class ConversationService {
         },
         user: { select: { id: true, name: true } },
         whatsappSession: { select: { id: true, phoneNumber: true, status: true } },
+        tags: { include: { tag: true } },
       },
     })
 

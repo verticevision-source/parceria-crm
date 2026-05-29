@@ -20,6 +20,12 @@ export interface SendMessageResult {
   sentAt: Date
 }
 
+export interface SendFilePayload {
+  data: string      // base64
+  mimetype: string
+  filename: string
+}
+
 /**
  * Interface para integração com WhatsApp.
  * Troque a implementação aqui para usar Evolution API, Baileys, API Oficial, etc.
@@ -30,6 +36,8 @@ export interface IWhatsAppProvider {
   getStatus(sessionId: string): Promise<ConnectionStatus>
   getQRCode(sessionId: string): Promise<string | null>
   sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult>
+  sendFile?(sessionId: string, to: string, file: SendFilePayload): Promise<SendMessageResult>
+  sendAudio?(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult>
   onMessageReceived(callback: (sessionId: string, message: IncomingMessage) => void): void
   onStatusChanged(callback: (status: ConnectionStatus) => void): void
 }

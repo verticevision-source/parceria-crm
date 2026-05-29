@@ -8,6 +8,8 @@ import leadRoutes from './lead.routes'
 import pipelineRoutes from './pipeline.routes'
 import dashboardRoutes from './dashboard.routes'
 import mediaRoutes from './media.routes'
+import quickReplyRoutes from './quickReply.routes'
+import customFieldRoutes from './customField.routes'
 
 const router = Router()
 
@@ -20,5 +22,7 @@ router.use('/leads', leadRoutes)
 router.use('/pipeline', pipelineRoutes)
 router.use('/dashboard', dashboardRoutes)
 router.use('/media', mediaRoutes)
+router.use('/quick-replies', quickReplyRoutes)
+router.use('/custom-fields', customFieldRoutes)
 
 export default router

@@ -61,6 +61,7 @@ model User {
   leads            Lead[]            @relation("ResponsibleUser")
   crmNotes         CRMNote[]
   auditLogs        AuditLog[]
+  quickReplies     QuickReply[]
 
   @@map("users")
 }
@@ -68,6 +69,7 @@ model User {
 model WhatsAppSession {
   id             String        @id @default(uuid())
   userId         String
+  name           String?
   phoneNumber    String?
   status         SessionStatus @default(WAITING_QR)
   qrCode         String?       @db.Text
@@ -117,11 +119,12 @@ model Conversation {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  whatsappSession WhatsAppSession @relation(fields: [whatsappSessionId], references: [id])
-  contact         Contact?        @relation(fields: [contactId], references: [id])
-  lead            Lead?           @relation(fields: [leadId], references: [id])
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  whatsappSession WhatsAppSession   @relation(fields: [whatsappSessionId], references: [id])
+  contact         Contact?          @relation(fields: [contactId], references: [id])
+  lead            Lead?             @relation(fields: [leadId], references: [id])
   messages        Message[]
+  tags            ConversationTag[]
 
   @@map("conversations")
 }
@@ -202,7 +205,8 @@ model Tag {
   color     String   @default("#6366f1")
   createdAt DateTime @default(now())
 
-  contacts ContactTag[]
+  contacts          ContactTag[]
+  conversationTags  ConversationTag[]
 
   @@map("tags")
 }
@@ -230,4 +234,63 @@ model AuditLog {
   user User @relation(fields: [userId], references: [id])
 
   @@map("audit_logs")
+}
+
+// Quick replies (respostas rápidas)
+model QuickReply {
+  id        String   @id @default(uuid())
+  userId    String
+  isGlobal  Boolean  @default(false)
+  title     String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("quick_replies")
+}
+
+// Tags for conversations
+model ConversationTag {
+  id             String @id @default(uuid())
+  conversationId String
+  tagId          String
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  tag          Tag          @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, tagId])
+  @@map("conversation_tags")
+}
+
+// Custom fields definition (admin-defined)
+model CustomField {
+  id         String   @id @default(uuid())
+  name       String
+  fieldKey   String   @unique
+  type       String   // TEXT, NUMBER, DATE, SELECT, BOOLEAN
+  entity     String   // CONTACT, LEAD
+  options    String?  @db.Text
+  isRequired Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  values CustomFieldValue[]
+
+  @@map("custom_fields")
+}
+
+model CustomFieldValue {
+  id            String   @id @default(uuid())
+  customFieldId String
+  entityId      String
+  value         String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  customField CustomField @relation(fields: [customFieldId], references: [id], onDelete: Cascade)
+
+  @@unique([customFieldId, entityId])
+  @@map("custom_field_values")
 }

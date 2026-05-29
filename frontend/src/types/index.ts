@@ -60,6 +60,13 @@ export interface Tag {
   color: string
 }
 
+export interface ConversationTag {
+  id: string
+  conversationId: string
+  tagId: string
+  tag: Tag
+}
+
 export interface Conversation {
   id: string
   userId: string
@@ -76,6 +83,7 @@ export interface Conversation {
   lead?: Lead
   user?: { id: string; name: string }
   whatsappSession?: { id: string; phoneNumber?: string; status: SessionStatus }
+  tags?: ConversationTag[]
   _count?: { messages: number }
 }
 
@@ -166,4 +174,36 @@ export interface DashboardAdmin {
   leadsPerStage: { name: string; color: string; count: number }[]
   conversationsPerUser: { name: string; count: number }[]
   leadsPerUser: { name: string; count: number }[]
+}
+
+export interface QuickReply {
+  id: string
+  title: string
+  body: string
+  isGlobal: boolean
+  userId: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CustomField {
+  id: string
+  name: string
+  fieldKey: string
+  type: 'TEXT' | 'NUMBER' | 'DATE' | 'SELECT' | 'BOOLEAN'
+  entity: 'CONTACT' | 'LEAD'
+  options?: string[]
+  isRequired: boolean
+  createdAt: string
+  updatedAt: string
+}
+
+export interface CustomFieldValue {
+  id: string
+  customFieldId: string
+  entityId: string
+  value?: string
+  createdAt: string
+  updatedAt: string
+  customField?: CustomField
 }

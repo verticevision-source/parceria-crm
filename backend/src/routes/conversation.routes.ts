@@ -13,4 +13,8 @@ router.get('/:id/messages', asyncHandler(ConversationController.getMessages))
 router.patch('/:id/status', asyncHandler(ConversationController.updateStatus))
 router.patch('/:id/read', asyncHandler(ConversationController.markAsRead))
 
+// Tags
+router.post('/:id/tags', asyncHandler(ConversationController.addTag))
+router.delete('/:id/tags/:tagId', asyncHandler(ConversationController.removeTag))
+
 export default router

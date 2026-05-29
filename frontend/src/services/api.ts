@@ -55,6 +55,16 @@ export const whatsappApi = {
   simulate: (sessionId: string, from: string, body: string) =>
     api.post('/whatsapp/simulate', { sessionId, from, body }),
   getAllSessions: () => api.get('/whatsapp/admin/sessions'),
+  sendMedia: (to: string, file: File) => {
+    const form = new FormData()
+    form.append('to', to)
+    form.append('file', file)
+    return api.post('/whatsapp/send-media', form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
+  sendAudio: (to: string, audioBase64: string, mimetype: string) =>
+    api.post('/whatsapp/send-audio', { to, audio: audioBase64, mimetype }),
+  adminConnect: (userId: string) => api.post('/whatsapp/admin/connect', { userId }),
+  adminDisconnect: (sessionId: string) => api.post(`/whatsapp/admin/disconnect/${sessionId}`),
 }
 
 // Conversations
@@ -107,4 +117,33 @@ export const pipelineApi = {
 export const dashboardApi = {
   user: () => api.get('/dashboard/user'),
   admin: () => api.get('/dashboard/admin'),
+}
+
+// Quick Replies
+export const quickRepliesApi = {
+  getAll: () => api.get('/quick-replies'),
+  create: (data: { title: string; body: string; isGlobal?: boolean }) =>
+    api.post('/quick-replies', data),
+  update: (id: string, data: { title: string; body: string; isGlobal?: boolean }) =>
+    api.put(`/quick-replies/${id}`, data),
+  remove: (id: string) => api.delete(`/quick-replies/${id}`),
+}
+
+// Custom Fields
+export const customFieldsApi = {
+  getFields: (entity: string) => api.get(`/custom-fields?entity=${entity}`),
+  createField: (data: object) => api.post('/custom-fields', data),
+  updateField: (id: string, data: object) => api.put(`/custom-fields/${id}`, data),
+  deleteField: (id: string) => api.delete(`/custom-fields/${id}`),
+  getValues: (entityId: string) => api.get(`/custom-fields/values/${entityId}`),
+  upsertValue: (entityId: string, data: object) =>
+    api.put(`/custom-fields/values/${entityId}`, data),
+}
+
+// Conversation Tags
+export const conversationTagsApi = {
+  addTag: (conversationId: string, tagId: string) =>
+    api.post(`/conversations/${conversationId}/tags`, { tagId }),
+  removeTag: (conversationId: string, tagId: string) =>
+    api.delete(`/conversations/${conversationId}/tags/${tagId}`),
 }

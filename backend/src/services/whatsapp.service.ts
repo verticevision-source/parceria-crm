@@ -343,4 +343,170 @@ export class WhatsAppService {
     const mockProvider = getMockProvider()
     mockProvider.simulateIncomingMessage(sessionId, from, body)
   }
+
+  // Admin connects a number for a specific user
+  static async connectForUser(adminId: string, targetUserId: string) {
+    void adminId // caller must verify admin role before calling
+    return WhatsAppService.connect(targetUserId)
+  }
+
+  // Admin gets all sessions with user info (already exists as getAllSessions)
+  static async getAllSessionsWithUsers() {
+    return WhatsAppService.getAllSessions()
+  }
+
+  // Admin assigns existing session to a different user
+  static async assignSession(sessionId: string, targetUserId: string) {
+    const session = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
+    if (!session) throw new Error('Sessão não encontrada')
+
+    return prisma.whatsAppSession.update({
+      where: { id: sessionId },
+      data: { userId: targetUserId },
+    })
+  }
+
+  // Admin disconnects a session by ID
+  static async disconnectById(sessionId: string) {
+    const session = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
+    if (!session) throw new Error('Sessão não encontrada')
+
+    const provider = getWhatsAppProvider()
+    await provider.disconnect(session.id)
+
+    return prisma.whatsAppSession.update({
+      where: { id: session.id },
+      data: { status: 'DISCONNECTED', disconnectedAt: new Date(), qrCode: null },
+    })
+  }
+
+  // Send media (image/document) via WAHA
+  static async sendMedia(
+    userId: string,
+    to: string,
+    file: { data: string; mimetype: string; filename: string }
+  ) {
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+    })
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+
+    let contact = await prisma.contact.findFirst({ where: { userId, phone: to } })
+    if (!contact) {
+      contact = await prisma.contact.create({ data: { userId, name: to, phone: to } })
+    }
+
+    let conversation = await prisma.conversation.findFirst({
+      where: { userId, whatsappSessionId: session.id, contactId: contact.id },
+    })
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          userId,
+          whatsappSessionId: session.id,
+          contactId: contact.id,
+          status: 'OPEN',
+          lastMessage: `[${file.mimetype.split('/')[0]}]`,
+          lastMessageAt: new Date(),
+        },
+      })
+    }
+
+    const provider = getWhatsAppProvider()
+    const result = await (provider as any).sendFile
+      ? (provider as any).sendFile(session.id, to, file)
+      : provider.sendMessage(session.id, to, `[Arquivo: ${file.filename}]`)
+
+    const msgType = file.mimetype.startsWith('image/')
+      ? 'IMAGE'
+      : file.mimetype.startsWith('video/')
+      ? 'VIDEO'
+      : file.mimetype.startsWith('audio/')
+      ? 'AUDIO'
+      : 'DOCUMENT'
+
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        userId,
+        whatsappSessionId: session.id,
+        contactId: contact.id,
+        direction: 'OUT',
+        type: msgType,
+        textBody: file.filename,
+        externalMessageId: result?.externalId,
+        sentAt: result?.sentAt || new Date(),
+      },
+    })
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessage: `[${msgType}]`, lastMessageAt: new Date() },
+    })
+
+    if (io) {
+      io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+    }
+
+    return message
+  }
+
+  // Send audio (voice message) via WAHA
+  static async sendAudio(userId: string, to: string, audioData: string) {
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+    })
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+
+    let contact = await prisma.contact.findFirst({ where: { userId, phone: to } })
+    if (!contact) {
+      contact = await prisma.contact.create({ data: { userId, name: to, phone: to } })
+    }
+
+    let conversation = await prisma.conversation.findFirst({
+      where: { userId, whatsappSessionId: session.id, contactId: contact.id },
+    })
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          userId,
+          whatsappSessionId: session.id,
+          contactId: contact.id,
+          status: 'OPEN',
+          lastMessage: '[Áudio]',
+          lastMessageAt: new Date(),
+        },
+      })
+    }
+
+    const provider = getWhatsAppProvider()
+    const result = await (provider as any).sendAudio
+      ? (provider as any).sendAudio(session.id, to, audioData)
+      : provider.sendMessage(session.id, to, '[Áudio]')
+
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        userId,
+        whatsappSessionId: session.id,
+        contactId: contact.id,
+        direction: 'OUT',
+        type: 'AUDIO',
+        textBody: null,
+        externalMessageId: result?.externalId,
+        sentAt: result?.sentAt || new Date(),
+      },
+    })
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessage: '[Áudio]', lastMessageAt: new Date() },
+    })
+
+    if (io) {
+      io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+    }
+
+    return message
+  }
 }

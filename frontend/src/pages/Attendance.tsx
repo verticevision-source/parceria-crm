@@ -1,18 +1,32 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
-  Phone, MapPin, Briefcase, ChevronRight, MessageSquare
+  Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2
 } from 'lucide-react'
-import { conversationsApi, leadsApi } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
-import { Conversation, Message } from '../types'
+import { Conversation, Message, QuickReply } from '../types'
 import { StatusBadge } from '../components/UI/Badge'
 import { format, isToday, isYesterday } from 'date-fns'
-import { ptBR } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 
-/** Strip WhatsApp JID suffixes for display: @lid, @c.us, @s.whatsapp.net */
+// ─────────────────────────────────────────────
+// Emoji data
+// ─────────────────────────────────────────────
+const EMOJIS = [
+  '😀','😁','😂','🤣','😃','😊','😎','😍','🥰','😘','🙂','😉','😋','🤩','😇',
+  '😭','😢','😤','😠','😡','🤬','😱','😨','😰','😥','😓','🫢','🤔','😐','🙄',
+  '👍','👎','👌','✌️','🤞','🤟','👋','🙏','💪','🤝','👏','🙌','🫶','🤜','🤛',
+  '❤️','🧡','💛','💚','💙','💜','🖤','🤍','💕','💞','💓','💗','💖','💘','💔',
+  '🎉','🎊','🎁','🎈','🎂','🍰','🥳','🎵','🎶','🚀','⭐','🌟','💫','🔥','✨',
+  '🍕','🍔','🍟','🌮','☕','🍺','🥂','🎮','💻','📱','🏠','🚗','✈️','🌈','🌸',
+]
+
+// ─────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────
 function displayPhone(phone: string | undefined | null): string {
   if (!phone) return ''
   return phone.replace(/@lid$/, '').replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '')
@@ -25,6 +39,15 @@ function formatMessageTime(date: string) {
   return format(d, 'dd/MM/yy')
 }
 
+function formatRecordingTime(seconds: number): string {
+  const m = Math.floor(seconds / 60).toString().padStart(2, '0')
+  const s = (seconds % 60).toString().padStart(2, '0')
+  return `${m}:${s}`
+}
+
+// ─────────────────────────────────────────────
+// ConversationItem
+// ─────────────────────────────────────────────
 function ConversationItem({
   conversation,
   isSelected,
@@ -65,14 +88,26 @@ function ConversationItem({
         <p className="text-text-muted text-xs truncate mt-0.5">
           {conversation.lastMessage || 'Sem mensagens'}
         </p>
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex items-center gap-1 flex-wrap">
           <StatusBadge status={conversation.status} />
+          {conversation.tags?.slice(0, 2).map((ct) => (
+            <span
+              key={ct.id}
+              className="px-1.5 py-0.5 rounded text-[10px] font-medium"
+              style={{ background: ct.tag.color + '33', color: ct.tag.color, border: `1px solid ${ct.tag.color}55` }}
+            >
+              {ct.tag.name}
+            </span>
+          ))}
         </div>
       </div>
     </button>
   )
 }
 
+// ─────────────────────────────────────────────
+// Main
+// ─────────────────────────────────────────────
 export default function Attendance() {
   const { user } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
@@ -84,7 +119,47 @@ export default function Attendance() {
   const [sending, setSending] = useState(false)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+
+  // Chat extras
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false)
+  const [showQuickReplies, setShowQuickReplies] = useState(false)
+  const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
+  const [qrSearch, setQrSearch] = useState('')
+
+  // Audio recording
+  const [recording, setRecording] = useState(false)
+  const [recordingTime, setRecordingTime] = useState(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // File upload
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Refs
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const selectedRef = useRef<Conversation | null>(null)
+  const inputRef = useRef<HTMLTextAreaElement>(null)
+
+  // Keep selectedRef in sync
+  useEffect(() => { selectedRef.current = selected }, [selected])
+
+  // Request notification permission once
+  useEffect(() => {
+    if ('Notification' in window && Notification.permission === 'default') {
+      Notification.requestPermission()
+    }
+  }, [])
+
+  // Load quick replies
+  const loadQuickReplies = useCallback(async () => {
+    try {
+      const res = await quickRepliesApi.getAll()
+      setQuickReplies(res.data.data || [])
+    } catch { /* ignore */ }
+  }, [])
+
+  useEffect(() => { loadQuickReplies() }, [loadQuickReplies])
 
   const loadConversations = useCallback(async () => {
     try {
@@ -106,8 +181,7 @@ export default function Attendance() {
 
     socket.on('new-message', ({ message, conversation }: { message: Message; conversation: Conversation }) => {
       setMessages((prev) => {
-        if (selected?.id === conversation.id) {
-          // Deduplicate by message ID
+        if (selectedRef.current?.id === conversation.id) {
           if (prev.some((m) => m.id === message.id)) return prev
           return [...prev, message]
         }
@@ -124,18 +198,51 @@ export default function Attendance() {
         }
         return prev
       })
+
+      // Browser notification for messages in background
+      if (
+        message.direction === 'IN' &&
+        'Notification' in window &&
+        Notification.permission === 'granted' &&
+        (document.hidden || selectedRef.current?.id !== conversation.id)
+      ) {
+        const from = conversation.contact?.name || displayPhone(conversation.contact?.phone) || 'Novo contato'
+        const notif = new Notification(`💬 ${from}`, {
+          body: message.textBody || '📎 Mídia',
+          icon: '/favicon.ico',
+          tag: conversation.id,
+        })
+        notif.onclick = () => { window.focus(); notif.close() }
+      }
     })
 
     return () => { socket.off('new-message') }
-  }, [selected])
+  }, [])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  // Close popovers on click outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement
+      if (!target.closest('[data-emoji-picker]') && !target.closest('[data-emoji-btn]')) {
+        setShowEmojiPicker(false)
+      }
+      if (!target.closest('[data-qr-picker]') && !target.closest('[data-qr-btn]')) {
+        setShowQuickReplies(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
   const selectConversation = async (conv: Conversation) => {
     setSelected(conv)
     setLoadingMessages(true)
+    setShowEmojiPicker(false)
+    setShowQuickReplies(false)
     try {
       const [msgRes] = await Promise.all([
         conversationsApi.getMessages(conv.id),
@@ -158,21 +265,13 @@ export default function Attendance() {
     setInput('')
     setSending(true)
     try {
-      await conversationsApi.findById(selected.id)
       const session = selected.whatsappSession
       if (!session || session.status !== 'CONNECTED') {
         toast.error('WhatsApp não está conectado')
         setInput(body)
         return
       }
-
-      const { whatsappApi } = await import('../services/api')
-      await whatsappApi.sendMessage(
-        selected.contact?.phone || '',
-        body
-      )
-      // Don't manually push message here — the socket 'new-message' event will add it
-      // to avoid duplicates (backend emits socket after saving to DB)
+      await whatsappApi.sendMessage(selected.contact?.phone || '', body)
       setConversations((prev) =>
         prev.map((c) =>
           c.id === selected.id
@@ -183,6 +282,92 @@ export default function Attendance() {
     } catch {
       toast.error('Erro ao enviar mensagem')
       setInput(body)
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const sendMediaFile = async (file: File) => {
+    if (!selected) return
+    setSending(true)
+    try {
+      await whatsappApi.sendMedia(selected.contact?.phone || '', file)
+      toast.success('Arquivo enviado!')
+    } catch {
+      toast.error('Erro ao enviar arquivo')
+    } finally {
+      setSending(false)
+      if (fileInputRef.current) fileInputRef.current.value = ''
+    }
+  }
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+        ? 'audio/webm'
+        : 'audio/ogg;codecs=opus'
+
+      const mr = new MediaRecorder(stream, { mimeType })
+      mediaRecorderRef.current = mr
+      audioChunksRef.current = []
+
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) audioChunksRef.current.push(e.data)
+      }
+      mr.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop())
+        const blob = new Blob(audioChunksRef.current, { type: mimeType })
+        const reader = new FileReader()
+        reader.onloadend = async () => {
+          const base64 = (reader.result as string).split(',')[1]
+          await sendAudioMessage(base64, mimeType)
+        }
+        reader.readAsDataURL(blob)
+      }
+
+      mr.start(200)
+      setRecording(true)
+      setRecordingTime(0)
+      recordingTimerRef.current = setInterval(() => setRecordingTime((t) => t + 1), 1000)
+    } catch {
+      toast.error('Microfone não disponível')
+    }
+  }
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      mediaRecorderRef.current.stop()
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+    setRecording(false)
+  }
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current?.state === 'recording') {
+      // Override onstop to not send
+      mediaRecorderRef.current.onstop = () => {
+        if (mediaRecorderRef.current) {
+          const stream = (mediaRecorderRef.current as any).stream as MediaStream | undefined
+          stream?.getTracks().forEach((t) => t.stop())
+        }
+      }
+      mediaRecorderRef.current.stop()
+    }
+    if (recordingTimerRef.current) clearInterval(recordingTimerRef.current)
+    setRecording(false)
+  }
+
+  const sendAudioMessage = async (audioBase64: string, mimetype: string) => {
+    if (!selected) return
+    setSending(true)
+    try {
+      await whatsappApi.sendAudio(selected.contact?.phone || '', audioBase64, mimetype)
+      toast.success('Áudio enviado!')
+    } catch {
+      toast.error('Erro ao enviar áudio')
     } finally {
       setSending(false)
     }
@@ -213,16 +398,32 @@ export default function Attendance() {
     }
   }
 
+  const insertEmoji = (emoji: string) => {
+    setInput((prev) => prev + emoji)
+    setShowEmojiPicker(false)
+    inputRef.current?.focus()
+  }
+
+  const insertQuickReply = (body: string) => {
+    setInput(body)
+    setShowQuickReplies(false)
+    inputRef.current?.focus()
+  }
+
   const filtered = conversations.filter((c) => {
     const name = (c.contact?.name || c.contact?.phone || '').toLowerCase()
     return name.includes(search.toLowerCase())
   })
 
+  const filteredQR = quickReplies.filter((qr) =>
+    qr.title.toLowerCase().includes(qrSearch.toLowerCase()) ||
+    qr.body.toLowerCase().includes(qrSearch.toLowerCase())
+  )
+
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Sidebar de conversas */}
+      {/* ── Sidebar de conversas ── */}
       <div className="w-80 bg-bg-secondary border-r border-border flex flex-col flex-shrink-0">
-        {/* Header */}
         <div className="p-4 border-b border-border">
           <h2 className="text-text-primary font-semibold mb-3">Atendimento</h2>
           <div className="relative">
@@ -251,7 +452,6 @@ export default function Attendance() {
           </div>
         </div>
 
-        {/* Lista */}
         <div className="flex-1 overflow-y-auto">
           {loadingConversations ? (
             <div className="flex items-center justify-center h-32">
@@ -275,8 +475,8 @@ export default function Attendance() {
         </div>
       </div>
 
-      {/* Chat */}
-      <div className="flex-1 flex flex-col bg-bg-primary">
+      {/* ── Chat ── */}
+      <div className="flex-1 flex flex-col bg-bg-primary min-w-0">
         {!selected ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
             <MessageSquare size={48} className="mb-4 opacity-20" />
@@ -285,41 +485,45 @@ export default function Attendance() {
           </div>
         ) : (
           <>
-            {/* Chat header */}
-            <div className="flex items-center gap-4 p-4 bg-bg-secondary border-b border-border">
-              <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center">
+            {/* Header */}
+            <div className="flex items-center gap-4 p-4 bg-bg-secondary border-b border-border flex-shrink-0">
+              <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-text-secondary font-medium text-sm">
                   {selected.contact?.name?.charAt(0).toUpperCase() || '?'}
                 </span>
               </div>
-              <div className="flex-1">
-                <p className="text-text-primary font-semibold text-sm">
+              <div className="flex-1 min-w-0">
+                <p className="text-text-primary font-semibold text-sm truncate">
                   {displayPhone(selected.contact?.name) || displayPhone(selected.contact?.phone) || 'Desconhecido'}
                 </p>
                 <p className="text-text-muted text-xs">{displayPhone(selected.contact?.phone)}</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {selected.tags && selected.tags.length > 0 && (
+                  <div className="flex gap-1">
+                    {selected.tags.slice(0, 3).map((ct) => (
+                      <span
+                        key={ct.id}
+                        className="px-2 py-0.5 rounded text-xs font-medium"
+                        style={{ background: ct.tag.color + '22', color: ct.tag.color, border: `1px solid ${ct.tag.color}44` }}
+                      >
+                        {ct.tag.name}
+                      </span>
+                    ))}
+                  </div>
+                )}
                 <StatusBadge status={selected.status} />
                 <div className="flex gap-1">
-                  <button
-                    onClick={() => updateStatus('OPEN')}
-                    title="Marcar Aberta"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-success transition-colors"
-                  >
+                  <button onClick={() => updateStatus('OPEN')} title="Aberta"
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-success transition-colors">
                     <CheckCircle size={16} />
                   </button>
-                  <button
-                    onClick={() => updateStatus('PENDING')}
-                    title="Marcar Pendente"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-warning transition-colors"
-                  >
+                  <button onClick={() => updateStatus('PENDING')} title="Pendente"
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-warning transition-colors">
                     <Clock size={16} />
                   </button>
-                  <button
-                    onClick={() => updateStatus('CLOSED')}
-                    title="Fechar"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-danger transition-colors"
-                  >
+                  <button onClick={() => updateStatus('CLOSED')} title="Fechar"
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-danger transition-colors">
                     <X size={16} />
                   </button>
                 </div>
@@ -338,16 +542,22 @@ export default function Attendance() {
                 </div>
               ) : (
                 messages.map((msg) => (
-                  <div
-                    key={msg.id}
-                    className={`flex ${msg.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}
-                  >
-                    <div
-                      className={
-                        msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'
-                      }
-                    >
-                      {msg.mediaUrl && (msg.type === 'IMAGE' || msg.type === 'VIDEO') ? (
+                  <div key={msg.id} className={`flex ${msg.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'}>
+                      {/* Audio */}
+                      {msg.type === 'AUDIO' && msg.mediaUrl && (
+                        <div className="flex items-center gap-2 min-w-[180px]">
+                          <Volume2 size={16} className="flex-shrink-0 opacity-70" />
+                          <audio
+                            controls
+                            src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                            className="h-8 max-w-[200px]"
+                            style={{ filter: msg.direction === 'OUT' ? 'invert(1)' : 'none', opacity: 0.9 }}
+                          />
+                        </div>
+                      )}
+                      {/* Image / Video */}
+                      {msg.mediaUrl && (msg.type === 'IMAGE' || msg.type === 'VIDEO') && (
                         <img
                           src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
                           alt="mídia"
@@ -355,20 +565,27 @@ export default function Attendance() {
                           onClick={() => window.open(`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl!)}`, '_blank')}
                           onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                         />
-                      ) : null}
+                      )}
+                      {/* Document */}
+                      {msg.type === 'DOCUMENT' && msg.mediaUrl && (
+                        <a
+                          href={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center gap-2 text-sm underline"
+                        >
+                          <Paperclip size={14} />
+                          Documento
+                        </a>
+                      )}
+                      {/* Text */}
                       {msg.textBody ? (
-                        <p className="text-sm leading-relaxed">{msg.textBody}</p>
-                      ) : !msg.mediaUrl ? (
-                        <p className="text-sm leading-relaxed text-opacity-70">[mídia]</p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.textBody}</p>
+                      ) : !msg.mediaUrl && msg.type !== 'AUDIO' ? (
+                        <p className="text-sm leading-relaxed opacity-60">[mídia]</p>
                       ) : null}
-                      <p
-                        className={`text-xs mt-1 ${
-                          msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'
-                        }`}
-                      >
-                        {msg.sentAt
-                          ? format(new Date(msg.sentAt), 'HH:mm')
-                          : format(new Date(msg.createdAt), 'HH:mm')}
+                      <p className={`text-xs mt-1 ${msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'}`}>
+                        {msg.sentAt ? format(new Date(msg.sentAt), 'HH:mm') : format(new Date(msg.createdAt), 'HH:mm')}
                       </p>
                     </div>
                   </div>
@@ -377,37 +594,191 @@ export default function Attendance() {
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div className="p-4 bg-bg-secondary border-t border-border">
-              <div className="flex items-center gap-3">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && !e.shiftKey && sendMessage()}
-                  placeholder="Digite uma mensagem..."
-                  className="input-field flex-1"
-                  disabled={sending}
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!input.trim() || sending}
-                  className="btn-primary p-3 rounded-xl flex items-center justify-center"
+            {/* ── Input area ── */}
+            <div className="p-4 bg-bg-secondary border-t border-border flex-shrink-0">
+
+              {/* Recording indicator */}
+              {recording && (
+                <div className="flex items-center gap-3 mb-3 px-4 py-2 rounded-xl"
+                  style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)' }}>
+                  <span className="w-2.5 h-2.5 bg-danger rounded-full animate-pulse flex-shrink-0" />
+                  <span className="text-danger text-sm font-medium flex-1">
+                    Gravando... {formatRecordingTime(recordingTime)}
+                  </span>
+                  <button onClick={cancelRecording} className="text-text-muted hover:text-danger text-xs px-2">
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={stopRecording}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium text-white"
+                    style={{ background: 'rgba(239,68,68,0.8)' }}
+                  >
+                    <MicOff size={14} />
+                    Enviar
+                  </button>
+                </div>
+              )}
+
+              {/* Quick replies panel */}
+              {showQuickReplies && (
+                <div data-qr-picker
+                  className="mb-3 rounded-xl border border-border overflow-hidden"
+                  style={{ background: '#0f1622', maxHeight: 200 }}
                 >
-                  {sending ? (
-                    <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  ) : (
-                    <Send size={18} />
-                  )}
-                </button>
-              </div>
+                  <div className="p-2 border-b border-border">
+                    <input
+                      value={qrSearch}
+                      onChange={(e) => setQrSearch(e.target.value)}
+                      placeholder="Buscar resposta..."
+                      className="input-field py-1.5 text-xs w-full"
+                    />
+                  </div>
+                  <div className="overflow-y-auto" style={{ maxHeight: 150 }}>
+                    {filteredQR.length === 0 ? (
+                      <p className="text-text-muted text-xs p-3">Nenhuma resposta encontrada</p>
+                    ) : (
+                      filteredQR.map((qr) => (
+                        <button
+                          key={qr.id}
+                          onClick={() => insertQuickReply(qr.body)}
+                          className="w-full text-left px-3 py-2 hover:bg-bg-hover transition-colors border-b border-border/30 last:border-0"
+                        >
+                          <p className="text-text-primary text-xs font-medium">{qr.title}</p>
+                          <p className="text-text-muted text-xs truncate">{qr.body}</p>
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Emoji picker */}
+              {showEmojiPicker && (
+                <div data-emoji-picker
+                  className="mb-3 p-3 rounded-xl border border-border flex flex-wrap gap-1"
+                  style={{ background: '#0f1622', maxHeight: 180, overflowY: 'auto' }}
+                >
+                  {EMOJIS.map((emoji) => (
+                    <button
+                      key={emoji}
+                      onClick={() => insertEmoji(emoji)}
+                      className="text-xl hover:scale-125 transition-transform p-0.5 rounded"
+                      title={emoji}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.zip"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) sendMediaFile(file)
+                }}
+              />
+
+              {/* Input row */}
+              {!recording && (
+                <div className="flex items-end gap-2">
+                  {/* Emoji button */}
+                  <button
+                    data-emoji-btn
+                    onClick={() => { setShowEmojiPicker((v) => !v); setShowQuickReplies(false) }}
+                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
+                      showEmojiPicker ? 'bg-primary/20 text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
+                    }`}
+                    title="Emoji"
+                  >
+                    <Smile size={20} />
+                  </button>
+
+                  {/* Quick replies */}
+                  <button
+                    data-qr-btn
+                    onClick={() => { setShowQuickReplies((v) => !v); setShowEmojiPicker(false); setQrSearch('') }}
+                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
+                      showQuickReplies ? 'bg-gold/20 text-gold' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
+                    }`}
+                    title="Respostas rápidas"
+                  >
+                    <Zap size={20} />
+                  </button>
+
+                  {/* File attach */}
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={sending}
+                    className="p-2.5 rounded-xl text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
+                    title="Enviar arquivo"
+                  >
+                    <Paperclip size={20} />
+                  </button>
+
+                  {/* Text input */}
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        sendMessage()
+                      }
+                    }}
+                    placeholder="Digite uma mensagem... (Shift+Enter para nova linha)"
+                    className="input-field flex-1 resize-none min-h-[42px] max-h-32 py-2.5 text-sm"
+                    rows={1}
+                    disabled={sending}
+                    style={{ height: 'auto' }}
+                    onInput={(e) => {
+                      const t = e.target as HTMLTextAreaElement
+                      t.style.height = 'auto'
+                      t.style.height = Math.min(t.scrollHeight, 128) + 'px'
+                    }}
+                  />
+
+                  {/* Audio */}
+                  <button
+                    onClick={startRecording}
+                    disabled={sending || !!input.trim()}
+                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
+                      sending || input.trim()
+                        ? 'text-text-muted/30 cursor-not-allowed'
+                        : 'text-text-muted hover:text-danger hover:bg-danger/10'
+                    }`}
+                    title="Gravar áudio"
+                  >
+                    <Mic size={20} />
+                  </button>
+
+                  {/* Send */}
+                  <button
+                    onClick={sendMessage}
+                    disabled={!input.trim() || sending}
+                    className="btn-primary p-2.5 rounded-xl flex items-center justify-center flex-shrink-0"
+                  >
+                    {sending ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <Send size={18} />
+                    )}
+                  </button>
+                </div>
+              )}
             </div>
           </>
         )}
       </div>
 
-      {/* Painel lateral — dados do contato */}
+      {/* ── Painel lateral — dados do contato ── */}
       {selected && selected.contact && (
-        <div className="w-72 bg-bg-secondary border-l border-border overflow-y-auto">
+        <div className="w-72 bg-bg-secondary border-l border-border overflow-y-auto flex-shrink-0">
           <div className="p-5">
             <div className="text-center mb-5">
               <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -445,11 +816,29 @@ export default function Attendance() {
               </div>
             )}
 
+            {/* Tags */}
+            {selected.tags && selected.tags.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center gap-1.5 mb-2">
+                  <Tag size={12} className="text-text-muted" />
+                  <p className="text-text-muted text-xs font-medium">Tags</p>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {selected.tags.map((ct) => (
+                    <span
+                      key={ct.id}
+                      className="px-2 py-0.5 rounded text-xs font-medium"
+                      style={{ background: ct.tag.color + '22', color: ct.tag.color, border: `1px solid ${ct.tag.color}44` }}
+                    >
+                      {ct.tag.name}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="mt-5 space-y-2">
-              <button
-                onClick={createLead}
-                className="w-full btn-primary flex items-center justify-center gap-2 text-sm"
-              >
+              <button onClick={createLead} className="w-full btn-primary flex items-center justify-center gap-2 text-sm">
                 <Briefcase size={16} />
                 Criar Lead no CRM
               </button>

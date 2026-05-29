@@ -15,7 +15,8 @@ const navItems = [
 ]
 
 const adminItems = [
-  { to: '/users', icon: Users, label: 'Usuários' },
+  { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
+  { to: '/users',          icon: Users,      label: 'Usuários' },
 ]
 
 export default function Sidebar() {

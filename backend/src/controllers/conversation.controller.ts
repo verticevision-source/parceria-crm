@@ -1,5 +1,6 @@
 import { Response } from 'express'
 import { ConversationService } from '../services/conversation.service'
+import { prisma } from '../config/database'
 import { AuthRequest } from '../types'
 
 export class ConversationController {
@@ -53,5 +54,53 @@ export class ConversationController {
       req.user!.role
     )
     res.json({ success: true, data: conversation })
+  }
+
+  static async addTag(req: AuthRequest, res: Response): Promise<void> {
+    const { id } = req.params
+    const { tagId } = req.body
+
+    if (!tagId) {
+      res.status(400).json({ success: false, message: 'tagId é obrigatório' })
+      return
+    }
+
+    // Check access
+    const conversation = await prisma.conversation.findUnique({ where: { id } })
+    if (!conversation) {
+      res.status(404).json({ success: false, message: 'Conversa não encontrada' })
+      return
+    }
+    if (req.user!.role !== 'ADMIN' && conversation.userId !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Acesso negado' })
+      return
+    }
+
+    const conversationTag = await prisma.conversationTag.upsert({
+      where: { conversationId_tagId: { conversationId: id, tagId } },
+      update: {},
+      create: { conversationId: id, tagId },
+      include: { tag: true },
+    })
+    res.status(201).json({ success: true, data: conversationTag })
+  }
+
+  static async removeTag(req: AuthRequest, res: Response): Promise<void> {
+    const { id, tagId } = req.params
+
+    const conversation = await prisma.conversation.findUnique({ where: { id } })
+    if (!conversation) {
+      res.status(404).json({ success: false, message: 'Conversa não encontrada' })
+      return
+    }
+    if (req.user!.role !== 'ADMIN' && conversation.userId !== req.user!.userId) {
+      res.status(403).json({ success: false, message: 'Acesso negado' })
+      return
+    }
+
+    await prisma.conversationTag.deleteMany({
+      where: { conversationId: id, tagId },
+    })
+    res.json({ success: true, message: 'Tag removida da conversa' })
   }
 }

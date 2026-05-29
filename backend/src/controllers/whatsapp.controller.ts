@@ -72,4 +72,68 @@ export class WhatsAppController {
     )
     res.json({ success: true, message: 'Mensagem simulada enviada' })
   }
+
+  // Admin: connect a number for a specific user
+  static async adminConnect(req: AuthRequest, res: Response): Promise<void> {
+    const { userId } = req.body
+    if (!userId) {
+      res.status(400).json({ success: false, message: 'userId é obrigatório' })
+      return
+    }
+    const result = await WhatsAppService.connectForUser(req.user!.userId, userId)
+    res.json({ success: true, data: result })
+  }
+
+  // Admin: disconnect a session by ID
+  static async adminDisconnect(req: AuthRequest, res: Response): Promise<void> {
+    const { sessionId } = req.params
+    const session = await WhatsAppService.disconnectById(sessionId)
+    res.json({ success: true, data: session })
+  }
+
+  // Send media file (multipart or base64 JSON)
+  static async sendMedia(req: AuthRequest, res: Response): Promise<void> {
+    const { to } = req.body
+
+    if (!to) {
+      res.status(400).json({ success: false, message: 'to é obrigatório' })
+      return
+    }
+
+    let filePayload: { data: string; mimetype: string; filename: string }
+
+    // Support multipart upload (multer populates req.file)
+    const multerFile = (req as any).file as Express.Multer.File | undefined
+    if (multerFile) {
+      filePayload = {
+        data: multerFile.buffer.toString('base64'),
+        mimetype: multerFile.mimetype,
+        filename: multerFile.originalname,
+      }
+    } else if (req.body.data && req.body.mimetype && req.body.filename) {
+      // JSON base64 body
+      filePayload = {
+        data: req.body.data,
+        mimetype: req.body.mimetype,
+        filename: req.body.filename,
+      }
+    } else {
+      res.status(400).json({ success: false, message: 'Arquivo não fornecido' })
+      return
+    }
+
+    const message = await WhatsAppService.sendMedia(req.user!.userId, to, filePayload)
+    res.json({ success: true, data: message })
+  }
+
+  // Send audio voice message
+  static async sendAudio(req: AuthRequest, res: Response): Promise<void> {
+    const { to, audio, mimetype: _mimetype } = req.body
+    if (!to || !audio) {
+      res.status(400).json({ success: false, message: 'to e audio são obrigatórios' })
+      return
+    }
+    const message = await WhatsAppService.sendAudio(req.user!.userId, to, audio)
+    res.json({ success: true, data: message })
+  }
 }

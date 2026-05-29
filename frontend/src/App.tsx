@@ -8,6 +8,7 @@ import CRM from './pages/CRM'
 import Contacts from './pages/Contacts'
 import Users from './pages/Users'
 import WhatsAppConfig from './pages/WhatsAppConfig'
+import AdminWhatsApp from './pages/AdminWhatsApp'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -57,6 +58,15 @@ export default function App() {
           element={
             <AdminRoute>
               <Users />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/whatsapp"
+          element={
+            <AdminRoute>
+              <AdminWhatsApp />
             </AdminRoute>
           }
         />

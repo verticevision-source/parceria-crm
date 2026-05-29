@@ -1,4 +1,4 @@
-import { IWhatsAppProvider, ConnectionStatus, IncomingMessage, SendMessageResult } from './IWhatsAppProvider'
+import { IWhatsAppProvider, ConnectionStatus, IncomingMessage, SendMessageResult, SendFilePayload } from './IWhatsAppProvider'
 import { logger } from '../../utils/logger'
 
 /**
@@ -202,6 +202,44 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
       session,
       chatId: toFormatted,
       text: body,
+    })
+    return {
+      externalId: data?.id || `waha_${Date.now()}`,
+      sentAt: new Date(),
+    }
+  }
+
+  async sendFile(sessionId: string, to: string, file: SendFilePayload): Promise<SendMessageResult> {
+    const session = this.getWahaSession(sessionId)
+    const toFormatted = to.includes('@') ? to : `${to}@c.us`
+
+    const data = await this.req<any>('POST', '/api/sendFile', {
+      session,
+      chatId: toFormatted,
+      file: {
+        mimetype: file.mimetype,
+        filename: file.filename,
+        data: file.data,
+      },
+    })
+    return {
+      externalId: data?.id || `waha_${Date.now()}`,
+      sentAt: new Date(),
+    }
+  }
+
+  async sendAudio(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult> {
+    const session = this.getWahaSession(sessionId)
+    const toFormatted = to.includes('@') ? to : `${to}@c.us`
+
+    const data = await this.req<any>('POST', '/api/sendVoice', {
+      session,
+      chatId: toFormatted,
+      file: {
+        mimetype: 'audio/ogg; codecs=opus',
+        filename: 'voice.ogg',
+        data: audioBase64,
+      },
     })
     return {
       externalId: data?.id || `waha_${Date.now()}`,
