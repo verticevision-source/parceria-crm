@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import {
   Smartphone, Wifi, WifiOff, RefreshCw, QrCode,
   AlertCircle, CheckCircle, Clock, Users, Shield,
   Activity, UserCircle, Phone
 } from 'lucide-react'
 import { whatsappApi, usersApi } from '../services/api'
-import { getSocket } from '../services/socket'
 import { User, WhatsAppSession, SessionStatus } from '../types'
 import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
@@ -24,24 +23,18 @@ function StatusIcon({ status }: { status: SessionStatus }) {
   }
 }
 
-function SessionStatusLabel({ status }: { status?: SessionStatus }) {
-  if (!status || status === 'DISCONNECTED') return <span className="text-text-muted text-xs">Desconectado</span>
-  return <StatusBadge status={status} />
-}
-
 export default function AdminWhatsApp() {
   const [users, setUsers] = useState<UserWithSession[]>([])
   const [sessions, setSessions] = useState<(WhatsAppSession & { user?: { id: string; name: string; email: string } })[]>([])
   const [loading, setLoading] = useState(true)
-
-  // QR display per user
-  const [qrCodes, setQrCodes] = useState<Record<string, string>>({})
   const [connecting, setConnecting] = useState<Record<string, boolean>>({})
   const [disconnecting, setDisconnecting] = useState<Record<string, boolean>>({})
-  const [pollingUsers, setPollingUsers] = useState<Set<string>>(new Set())
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const loadData = useCallback(async () => {
+  // ── Carrega todos os usuários + sessões ──────────────────────────────────
+  const loadData = useCallback(async (silent = false) => {
     try {
+      if (!silent) setLoading(true)
       const [usersRes, sessionsRes] = await Promise.all([
         usersApi.findAll(),
         whatsappApi.getAllSessions(),
@@ -53,21 +46,15 @@ export default function AdminWhatsApp() {
 
       setSessions(allSessions)
 
-      // Match active sessions to users
       const merged: UserWithSession[] = allUsers.map((u) => {
-        const activeSessions = allSessions.filter(
-          (s) => s.userId === u.id && s.status !== 'DISCONNECTED'
-        )
-        // Pick the most recent active session
-        const activeSession = activeSessions.sort(
-          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-        )[0] || null
-        return { ...u, activeSession }
+        const active = allSessions
+          .filter((s) => s.userId === u.id && s.status !== 'DISCONNECTED')
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] || null
+        return { ...u, activeSession: active }
       })
-
       setUsers(merged)
     } catch {
-      toast.error('Erro ao carregar dados')
+      if (!silent) toast.error('Erro ao carregar dados')
     } finally {
       setLoading(false)
     }
@@ -75,86 +62,37 @@ export default function AdminWhatsApp() {
 
   useEffect(() => { loadData() }, [loadData])
 
-  // Listen for status changes via socket
+  // ── Polling automático quando há sessões aguardando QR ───────────────────
   useEffect(() => {
-    const socket = getSocket()
-    socket.on('whatsapp-status', (data: {
-      sessionId: string; status: SessionStatus; phoneNumber?: string; qrCode?: string
-    }) => {
-      setSessions((prev) =>
-        prev.map((s) =>
-          s.id === data.sessionId
-            ? { ...s, status: data.status, phoneNumber: data.phoneNumber, qrCode: data.qrCode }
-            : s
-        )
-      )
-      setUsers((prev) =>
-        prev.map((u) => {
-          if (u.activeSession?.id === data.sessionId) {
-            return {
-              ...u,
-              activeSession: {
-                ...u.activeSession!,
-                status: data.status,
-                phoneNumber: data.phoneNumber,
-                qrCode: data.qrCode,
-              },
-            }
-          }
-          return u
-        })
-      )
-      if (data.qrCode) {
-        setQrCodes((prev) => {
-          // find userId for this session
-          const userId = sessions.find((s) => s.id === data.sessionId)?.userId
-          if (userId) return { ...prev, [userId]: data.qrCode! }
-          return prev
-        })
-      }
-      if (data.status === 'CONNECTED') {
-        toast.success('WhatsApp conectado com sucesso!')
-        // Reload to get updated phone number
-        loadData()
-      }
-    })
-    return () => { socket.off('whatsapp-status') }
-  }, [sessions, loadData])
+    const hasWaiting = users.some((u) => u.activeSession?.status === 'WAITING_QR')
 
-  // Poll QR codes for users in WAITING_QR
-  useEffect(() => {
-    const waitingUsers = users.filter((u) => u.activeSession?.status === 'WAITING_QR')
-    if (waitingUsers.length === 0) return
-
-    const fetchQR = async (userId: string, sessionId: string) => {
-      try {
-        const res = await whatsappApi.getQRCode()
-        if (res.data.data?.qrCode) {
-          setQrCodes((prev) => ({ ...prev, [userId]: res.data.data.qrCode }))
-        }
-        void sessionId
-      } catch { /* ignore */ }
+    if (hasWaiting) {
+      if (!pollRef.current) {
+        pollRef.current = setInterval(() => loadData(true), 4000)
+      }
+    } else {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
     }
 
-    const intervals = waitingUsers.map((u) => {
-      fetchQR(u.id, u.activeSession!.id)
-      return setInterval(() => fetchQR(u.id, u.activeSession!.id), 8000)
-    })
+    return () => {
+      if (pollRef.current) {
+        clearInterval(pollRef.current)
+        pollRef.current = null
+      }
+    }
+  }, [users, loadData])
 
-    return () => intervals.forEach(clearInterval)
-  }, [users])
-
+  // ── Ações ─────────────────────────────────────────────────────────────────
   const connectUser = async (userId: string) => {
     setConnecting((p) => ({ ...p, [userId]: true }))
     try {
-      const res = await whatsappApi.adminConnect(userId)
-      const newSession = res.data.data?.session
-      if (newSession) {
-        setUsers((prev) =>
-          prev.map((u) => u.id === userId ? { ...u, activeSession: newSession } : u)
-        )
-      }
-      toast.success('Iniciando conexão...')
+      await whatsappApi.adminConnect(userId)
+      toast.success('Iniciando conexão — aguardando QR Code...')
+      // Poll imediato após conectar
+      setTimeout(() => loadData(true), 2000)
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(msg || 'Erro ao conectar')
@@ -167,15 +105,8 @@ export default function AdminWhatsApp() {
     setDisconnecting((p) => ({ ...p, [userId]: true }))
     try {
       await whatsappApi.adminDisconnect(sessionId)
-      setUsers((prev) =>
-        prev.map((u) =>
-          u.id === userId
-            ? { ...u, activeSession: u.activeSession ? { ...u.activeSession, status: 'DISCONNECTED' as SessionStatus } : null }
-            : u
-        )
-      )
-      setQrCodes((p) => { const n = { ...p }; delete n[userId]; return n })
       toast.success('Desconectado com sucesso')
+      await loadData(true)
     } catch {
       toast.error('Erro ao desconectar')
     } finally {
@@ -183,133 +114,109 @@ export default function AdminWhatsApp() {
     }
   }
 
-  void pollingUsers
-  void setPollingUsers
-
   if (loading) return <PageLoader />
 
   const connectedCount = users.filter((u) => u.activeSession?.status === 'CONNECTED').length
-  const waitingCount = users.filter((u) => u.activeSession?.status === 'WAITING_QR').length
+  const waitingCount   = users.filter((u) => u.activeSession?.status === 'WAITING_QR').length
 
   return (
     <div className="p-8 max-w-5xl animate-fade-in">
-      {/* Header */}
+      {/* ── Header ── */}
       <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-text-primary tracking-tight">
-          Gerenciar WhatsApp
-        </h1>
+        <h1 className="text-3xl font-extrabold text-text-primary tracking-tight">Gerenciar WhatsApp</h1>
         <p className="text-text-muted text-sm mt-1">
-          Conecte e gerencie números WhatsApp para cada atendente
+          Conecte e gerencie números WhatsApp para cada atendente · Evolution API
         </p>
       </div>
 
-      {/* Summary cards */}
+      {/* ── Cards de resumo ── */}
       <div className="grid grid-cols-3 gap-4 mb-8">
-        <div className="card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}>
-            <Users size={18} className="text-success" />
+        {[
+          { icon: Users,  color: 'rgba(16,185,129,.12)', border: 'rgba(16,185,129,.25)', iconColor: 'text-success', value: users.length,     label: 'Atendentes'  },
+          { icon: Wifi,   color: 'rgba(16,185,129,.12)', border: 'rgba(16,185,129,.25)', iconColor: 'text-success', value: connectedCount,  label: 'Conectados'  },
+          { icon: QrCode, color: 'rgba(245,158,11,.12)', border: 'rgba(245,158,11,.25)', iconColor: 'text-warning', value: waitingCount,    label: 'Aguard. QR'  },
+        ].map(({ icon: Icon, color, border, iconColor, value, label }) => (
+          <div key={label} className="card flex items-center gap-4">
+            <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
+              style={{ background: color, border: `1px solid ${border}` }}>
+              <Icon size={18} className={iconColor} />
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-text-primary">{value}</p>
+              <p className="text-text-muted text-xs">{label}</p>
+            </div>
           </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{users.length}</p>
-            <p className="text-text-muted text-xs">Atendentes</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(16,185,129,0.12)', border: '1px solid rgba(16,185,129,0.25)' }}>
-            <Wifi size={18} className="text-success" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{connectedCount}</p>
-            <p className="text-text-muted text-xs">Conectados</p>
-          </div>
-        </div>
-        <div className="card flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(245,158,11,0.12)', border: '1px solid rgba(245,158,11,0.25)' }}>
-            <QrCode size={18} className="text-warning" />
-          </div>
-          <div>
-            <p className="text-2xl font-bold text-text-primary">{waitingCount}</p>
-            <p className="text-text-muted text-xs">Aguardando QR</p>
-          </div>
-        </div>
+        ))}
       </div>
 
-      {/* Note: WAHA free tier */}
+      {/* ── Info Evolution API ── */}
       <div className="mb-6 px-4 py-3 rounded-xl text-sm flex items-center gap-2"
         style={{ background: 'rgba(99,102,241,0.08)', border: '1px solid rgba(99,102,241,0.2)' }}>
         <Shield size={14} className="text-primary-light flex-shrink-0" />
         <p className="text-text-secondary">
-          <strong className="text-primary-light">WAHA Free Tier:</strong> suporta apenas 1 sessão simultânea (compartilhada entre todos os atendentes). Para múltiplos números simultâneos, faça upgrade para WAHA Plus.
+          <strong className="text-primary-light">Evolution API v2</strong> — multi-sessão ilimitada. Cada atendente tem seu próprio número de WhatsApp.
         </p>
       </div>
 
-      {/* User cards */}
+      {/* ── Cards de usuário ── */}
       <div className="space-y-4">
         {users.map((u) => {
-          const session = u.activeSession
+          const session   = u.activeSession
           const isConnected = session?.status === 'CONNECTED'
-          const isWaiting = session?.status === 'WAITING_QR'
-          const hasSession = session && session.status !== 'DISCONNECTED'
-          const qr = qrCodes[u.id] || session?.qrCode
+          const isWaiting   = session?.status === 'WAITING_QR'
+          const hasSession  = session && session.status !== 'DISCONNECTED'
+          const qr = session?.qrCode
 
           return (
-            <div
-              key={u.id}
-              className="rounded-2xl border overflow-hidden"
+            <div key={u.id} className="rounded-2xl border overflow-hidden"
               style={{
                 background: 'linear-gradient(135deg, #0f1622 0%, #111827 100%)',
-                borderColor: isConnected
-                  ? 'rgba(16,185,129,0.25)'
-                  : isWaiting
-                  ? 'rgba(245,158,11,0.25)'
-                  : '#1e2d4a',
-              }}
-            >
+                borderColor: isConnected ? 'rgba(16,185,129,0.25)' : isWaiting ? 'rgba(245,158,11,0.25)' : '#1e2d4a',
+              }}>
+
+              {/* Info + botões */}
               <div className="flex items-center gap-4 p-5">
                 {/* Avatar */}
                 <div className="w-12 h-12 rounded-2xl flex items-center justify-center flex-shrink-0"
                   style={{ background: 'linear-gradient(135deg, #6366f1, #7c3aed)' }}>
-                  <span className="text-white text-lg font-bold">
-                    {u.name.charAt(0).toUpperCase()}
-                  </span>
+                  <span className="text-white text-lg font-bold">{u.name.charAt(0).toUpperCase()}</span>
                 </div>
 
-                {/* User info */}
+                {/* Nome + status */}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-0.5">
                     <p className="text-text-primary font-semibold truncate">{u.name}</p>
                     {u.role === 'ADMIN' && (
                       <span className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold"
                         style={{ background: 'rgba(245,208,107,0.12)', color: '#F5D06B', border: '1px solid rgba(245,208,107,0.25)' }}>
-                        <Shield size={9} />
-                        ADMIN
+                        <Shield size={9} /> ADMIN
                       </span>
                     )}
                   </div>
                   <p className="text-text-muted text-xs">{u.email}</p>
                   <div className="flex items-center gap-2 mt-1.5">
                     <StatusIcon status={session?.status || 'DISCONNECTED'} />
-                    <SessionStatusLabel status={session?.status} />
+                    {!session || session.status === 'DISCONNECTED'
+                      ? <span className="text-text-muted text-xs">Desconectado</span>
+                      : <StatusBadge status={session.status} />}
                     {isConnected && session?.phoneNumber && (
                       <span className="flex items-center gap-1 text-text-muted text-xs">
-                        <Phone size={11} />
-                        {session.phoneNumber}
+                        <Phone size={11} /> {session.phoneNumber}
+                      </span>
+                    )}
+                    {isWaiting && (
+                      <span className="text-warning text-xs flex items-center gap-1 animate-pulse">
+                        <Activity size={11} /> Aguardando QR...
                       </span>
                     )}
                   </div>
                 </div>
 
-                {/* Actions */}
+                {/* Botões */}
                 <div className="flex gap-2 flex-shrink-0">
                   {!hasSession && (
-                    <button
-                      onClick={() => connectUser(u.id)}
-                      disabled={connecting[u.id]}
-                      className="btn-primary flex items-center gap-2 text-sm"
-                    >
+                    <button onClick={() => connectUser(u.id)} disabled={connecting[u.id]}
+                      className="btn-primary flex items-center gap-2 text-sm">
                       {connecting[u.id]
                         ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                         : <Wifi size={15} />}
@@ -317,21 +224,14 @@ export default function AdminWhatsApp() {
                     </button>
                   )}
                   {isWaiting && (
-                    <button
-                      onClick={() => connectUser(u.id)}
-                      disabled={connecting[u.id]}
-                      className="btn-primary flex items-center gap-2 text-sm"
-                    >
-                      <RefreshCw size={15} />
-                      Novo QR
+                    <button onClick={() => connectUser(u.id)} disabled={connecting[u.id]}
+                      className="btn-primary flex items-center gap-2 text-sm">
+                      <RefreshCw size={15} /> Novo QR
                     </button>
                   )}
                   {hasSession && (
-                    <button
-                      onClick={() => disconnectSession(u.id, session!.id)}
-                      disabled={disconnecting[u.id]}
-                      className="btn-danger flex items-center gap-2 text-sm"
-                    >
+                    <button onClick={() => disconnectSession(u.id, session!.id)} disabled={disconnecting[u.id]}
+                      className="btn-danger flex items-center gap-2 text-sm">
                       {disconnecting[u.id]
                         ? <div className="w-4 h-4 border-2 border-danger/30 border-t-danger rounded-full animate-spin" />
                         : <WifiOff size={15} />}
@@ -351,7 +251,9 @@ export default function AdminWhatsApp() {
                       <p className="text-warning font-semibold text-sm">Escanear QR Code</p>
                     </div>
                     <p className="text-text-muted text-xs leading-relaxed">
-                      Abra o <strong className="text-text-secondary">WhatsApp</strong> no celular de <strong className="text-text-secondary">{u.name}</strong>, acesse <em>Menu → Aparelhos conectados → Conectar</em> e escaneie o código ao lado.
+                      Abra o <strong className="text-text-secondary">WhatsApp</strong> no celular de{' '}
+                      <strong className="text-text-secondary">{u.name}</strong>, acesse{' '}
+                      <em>Menu → Aparelhos conectados → Conectar</em> e escaneie o código ao lado.
                     </p>
                     <div className="flex items-center gap-1.5 mt-3 px-3 py-2 rounded-lg"
                       style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
@@ -364,12 +266,21 @@ export default function AdminWhatsApp() {
                   </div>
                 </div>
               )}
+
+              {/* Aguardando QR mas ainda sem imagem */}
+              {isWaiting && !qr && (
+                <div className="border-t px-5 py-4 flex items-center gap-3"
+                  style={{ borderColor: 'rgba(245,158,11,0.2)', background: 'rgba(245,158,11,0.04)' }}>
+                  <div className="w-6 h-6 border-2 border-warning/30 border-t-warning rounded-full animate-spin flex-shrink-0" />
+                  <p className="text-warning text-sm">Gerando QR Code... aguarde alguns segundos</p>
+                </div>
+              )}
             </div>
           )
         })}
       </div>
 
-      {/* All sessions table (collapsed view) */}
+      {/* ── Histórico de sessões ── */}
       {sessions.length > 0 && (
         <div className="mt-8">
           <h2 className="text-text-primary font-bold mb-4 flex items-center gap-2">
@@ -380,14 +291,13 @@ export default function AdminWhatsApp() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left text-text-muted text-xs font-medium p-4">Atendente</th>
-                  <th className="text-left text-text-muted text-xs font-medium p-4">Número</th>
-                  <th className="text-left text-text-muted text-xs font-medium p-4">Status</th>
-                  <th className="text-left text-text-muted text-xs font-medium p-4">Criada em</th>
+                  {['Atendente', 'Número', 'Status', 'Criada em'].map((h) => (
+                    <th key={h} className="text-left text-text-muted text-xs font-medium p-4">{h}</th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {sessions.slice(0, 10).map((s) => (
+                {sessions.slice(0, 20).map((s) => (
                   <tr key={s.id} className="border-b border-border/50 last:border-0 hover:bg-bg-hover transition-colors">
                     <td className="p-4">
                       <div className="flex items-center gap-2">
@@ -398,9 +308,7 @@ export default function AdminWhatsApp() {
                     <td className="p-4 text-text-secondary">
                       {s.phoneNumber || <span className="text-text-muted">—</span>}
                     </td>
-                    <td className="p-4">
-                      <StatusBadge status={s.status} />
-                    </td>
+                    <td className="p-4"><StatusBadge status={s.status} /></td>
                     <td className="p-4 text-text-muted text-xs">
                       {new Date(s.createdAt).toLocaleDateString('pt-BR')}
                     </td>

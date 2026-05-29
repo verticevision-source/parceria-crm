@@ -25,16 +25,13 @@ services:
         value: parceriaCRM_2024_K9x#mPqR!secretKey_DigitalOcean
         scope: RUN_AND_BUILD_TIME
       - key: WHATSAPP_PROVIDER
-        value: waha
+        value: evolution
         scope: RUN_AND_BUILD_TIME
-      - key: WAHA_API_URL
-        value: "http://165.245.253.188:3000"
+      - key: EVOLUTION_API_URL
+        value: "http://SEU_IP_DO_SERVIDOR:8080"
         scope: RUN_AND_BUILD_TIME
-      - key: WAHA_API_KEY
-        value: parceria-crm-waha-secret-2024
-        scope: RUN_AND_BUILD_TIME
-      - key: WAHA_MEDIA_SERVER_URL
-        value: "http://165.245.253.188:3001"
+      - key: EVOLUTION_API_KEY
+        value: "SUA_CHAVE_SECRETA_AQUI"
         scope: RUN_AND_BUILD_TIME
       - key: BACKEND_URL
         value: "https://parceria-crm-api-v5frz.ondigitalocean.app"

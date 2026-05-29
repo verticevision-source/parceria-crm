@@ -1,0 +1,55 @@
+version: '3.8'
+
+# ─────────────────────────────────────────────────────────────────
+# Evolution API v2 — multi-sessão WhatsApp
+# Uso: docker compose -f docker-compose.evolution.yml up -d
+# ─────────────────────────────────────────────────────────────────
+
+services:
+  evolution-api:
+    image: atendai/evolution-api:v2.2.3
+    container_name: evolution-api
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    environment:
+      # ── Servidor ───────────────────────────────────────────────
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: http://localhost:8080
+
+      # ── Autenticação ───────────────────────────────────────────
+      # IMPORTANTE: troque esta chave por uma senha forte!
+      AUTHENTICATION_TYPE: apikey
+      AUTHENTICATION_API_KEY: SUA_CHAVE_SECRETA_AQUI
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+
+      # ── Instâncias ─────────────────────────────────────────────
+      DEL_INSTANCE: "false"
+      DEL_TEMP_INSTANCES: "false"
+
+      # ── QR Code ────────────────────────────────────────────────
+      QRCODE_LIMIT: "30"
+      QRCODE_COLOR: "#198754"
+
+      # ── Armazenamento local (mensagens/contatos) ───────────────
+      STORE_MESSAGES: "true"
+      STORE_MESSAGE_UP: "true"
+      STORE_CONTACTS: "true"
+      STORE_CHATS: "true"
+
+      # ── Webhook global (desativado — cada sessão configura o seu)
+      WEBHOOK_GLOBAL_ENABLED: "false"
+
+      # ── Log ───────────────────────────────────────────────────
+      LOG_LEVEL: ERROR
+      LOG_COLOR: "true"
+
+      # ── Idioma ────────────────────────────────────────────────
+      LANGUAGE: pt-BR
+
+volumes:
+  evolution_instances:
+    driver: local
