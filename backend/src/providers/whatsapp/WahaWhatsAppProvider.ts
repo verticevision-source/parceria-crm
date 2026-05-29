@@ -234,11 +234,17 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
         ? rawFrom  // keep full LID JID so sendMessage can use it directly
         : rawFrom.replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '')
 
+      // Log media fields for debugging
+      if (msg.hasMedia) {
+        logger.info(`[WAHA] Media msg fields: hasMedia=${msg.hasMedia} mediaUrl=${msg.mediaUrl} type=${msg.type} body=${msg.body} id=${msg.id}`)
+      }
+
       const incoming: IncomingMessage = {
         externalId: msg.id || `waha_${Date.now()}`,
         from,
-        body: msg.body || '[mídia]',
+        body: msg.body || (msg.hasMedia ? '[mídia]' : ''),
         type: this.detectType(msg),
+        mediaUrl: msg.mediaUrl || undefined,
         timestamp: new Date(msg.timestamp ? msg.timestamp * 1000 : Date.now()),
       }
 

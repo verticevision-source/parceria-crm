@@ -7,6 +7,7 @@ import contactRoutes from './contact.routes'
 import leadRoutes from './lead.routes'
 import pipelineRoutes from './pipeline.routes'
 import dashboardRoutes from './dashboard.routes'
+import mediaRoutes from './media.routes'
 
 const router = Router()
 
@@ -18,5 +19,6 @@ router.use('/contacts', contactRoutes)
 router.use('/leads', leadRoutes)
 router.use('/pipeline', pipelineRoutes)
 router.use('/dashboard', dashboardRoutes)
+router.use('/media', mediaRoutes)
 
 export default router

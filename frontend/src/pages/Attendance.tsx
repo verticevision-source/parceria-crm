@@ -12,6 +12,12 @@ import { format, isToday, isYesterday } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 
+/** Strip WhatsApp JID suffixes for display: @lid, @c.us, @s.whatsapp.net */
+function displayPhone(phone: string | undefined | null): string {
+  if (!phone) return ''
+  return phone.replace(/@lid$/, '').replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '')
+}
+
 function formatMessageTime(date: string) {
   const d = new Date(date)
   if (isToday(d)) return format(d, 'HH:mm')
@@ -50,7 +56,7 @@ function ConversationItem({
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-1">
           <p className="text-text-primary text-sm font-medium truncate">
-            {conversation.contact?.name || conversation.contact?.phone || 'Desconhecido'}
+            {displayPhone(conversation.contact?.name) || displayPhone(conversation.contact?.phone) || 'Desconhecido'}
           </p>
           <span className="text-text-muted text-xs flex-shrink-0">
             {conversation.lastMessageAt ? formatMessageTime(conversation.lastMessageAt) : ''}
@@ -288,9 +294,9 @@ export default function Attendance() {
               </div>
               <div className="flex-1">
                 <p className="text-text-primary font-semibold text-sm">
-                  {selected.contact?.name || selected.contact?.phone || 'Desconhecido'}
+                  {displayPhone(selected.contact?.name) || displayPhone(selected.contact?.phone) || 'Desconhecido'}
                 </p>
-                <p className="text-text-muted text-xs">{selected.contact?.phone}</p>
+                <p className="text-text-muted text-xs">{displayPhone(selected.contact?.phone)}</p>
               </div>
               <div className="flex items-center gap-2">
                 <StatusBadge status={selected.status} />
@@ -341,7 +347,20 @@ export default function Attendance() {
                         msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'
                       }
                     >
-                      <p className="text-sm leading-relaxed">{msg.textBody}</p>
+                      {msg.mediaUrl && (msg.type === 'IMAGE' || msg.type === 'VIDEO') ? (
+                        <img
+                          src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                          alt="mídia"
+                          className="max-w-xs rounded-lg mb-1 cursor-pointer"
+                          onClick={() => window.open(`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl!)}`, '_blank')}
+                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                        />
+                      ) : null}
+                      {msg.textBody ? (
+                        <p className="text-sm leading-relaxed">{msg.textBody}</p>
+                      ) : !msg.mediaUrl ? (
+                        <p className="text-sm leading-relaxed text-opacity-70">[mídia]</p>
+                      ) : null}
                       <p
                         className={`text-xs mt-1 ${
                           msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'
@@ -396,8 +415,8 @@ export default function Attendance() {
                   {selected.contact.name?.charAt(0).toUpperCase()}
                 </span>
               </div>
-              <h3 className="text-text-primary font-semibold">{selected.contact.name}</h3>
-              <p className="text-text-muted text-sm">{selected.contact.phone}</p>
+              <h3 className="text-text-primary font-semibold">{displayPhone(selected.contact.name)}</h3>
+              <p className="text-text-muted text-sm">{displayPhone(selected.contact.phone)}</p>
             </div>
 
             <div className="space-y-3">
@@ -409,7 +428,7 @@ export default function Attendance() {
               )}
               <div className="flex items-center gap-2 text-text-secondary text-sm">
                 <Phone size={14} className="text-text-muted flex-shrink-0" />
-                <span>{selected.contact.phone}</span>
+                <span>{displayPhone(selected.contact.phone)}</span>
               </div>
               {user && (
                 <div className="flex items-center gap-2 text-text-secondary text-sm">
