@@ -193,7 +193,9 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
   async sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult> {
     const session = this.getWahaSession(sessionId)
     // WAHA expects numbers in format: 5511999999999@c.us
-    const toFormatted = to.includes('@') ? to : `${to}@c.us`
+    // Strip any existing suffix (@c.us, @s.whatsapp.net, @lid) and re-add @c.us
+    // Groups (@g.us) are passed through as-is
+    const toFormatted = to.includes('@g.us') ? to : `${to.replace(/@.*$/, '')}@c.us`
 
     const data = await this.req<any>('POST', '/api/sendText', {
       session,
@@ -226,7 +228,7 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
 
       const incoming: IncomingMessage = {
         externalId: msg.id || `waha_${Date.now()}`,
-        from: (msg.from || '').replace('@c.us', '').replace('@s.whatsapp.net', ''),
+        from: (msg.from || '').replace(/@c\.us$/, '').replace(/@s\.whatsapp\.net$/, '').replace(/@lid$/, ''),
         body: msg.body || '[mídia]',
         type: this.detectType(msg),
         timestamp: new Date(msg.timestamp ? msg.timestamp * 1000 : Date.now()),
