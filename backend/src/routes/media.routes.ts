@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express'
-import { authenticate } from '../middlewares/auth.middleware'
+import { authMiddleware } from '../middlewares/auth.middleware'
 import { logger } from '../utils/logger'
 
 const router = Router()
@@ -9,7 +9,7 @@ const router = Router()
  * Proxies media requests to WAHA adding the API key header.
  * Authenticated — only logged-in users can fetch media.
  */
-router.get('/proxy', authenticate, async (req: Request, res: Response) => {
+router.get('/proxy', authMiddleware, async (req: Request, res: Response) => {
   const { url } = req.query as { url?: string }
 
   if (!url) {
