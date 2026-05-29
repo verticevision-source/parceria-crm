@@ -53,11 +53,22 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       ? `${process.env.BACKEND_URL}/api/webhook/evolution`
       : undefined
 
+    // Proxy residencial opcional — configura via env vars PROXY_HOST, PROXY_PORT, etc.
+    const proxyConfig = process.env.PROXY_HOST ? {
+      enabled: true,
+      host: process.env.PROXY_HOST,
+      port: Number(process.env.PROXY_PORT || '8080'),
+      protocol: (process.env.PROXY_PROTOCOL || 'http') as 'http' | 'https' | 'socks5',
+      username: process.env.PROXY_USERNAME || '',
+      password: process.env.PROXY_PASSWORD || '',
+    } : undefined
+
     // Tenta criar a instância
     try {
       await this.req('POST', '/instance/create', {
         instanceName: sessionId,
         integration: 'WHATSAPP-BAILEYS',
+        ...(proxyConfig && { proxy: proxyConfig }),
         ...(webhookUrl && {
           webhook: {
             url: webhookUrl,
@@ -67,9 +78,9 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
           },
         }),
       })
-      logger.info(`[Evolution] Instância criada: ${sessionId}`)
+      logger.info(`[Evolution] Instância criada: ${sessionId}${proxyConfig ? ' (com proxy)' : ''}`)
     } catch {
-      // Instância já existe — atualiza webhook
+      // Instância já existe — atualiza webhook e proxy
       logger.info(`[Evolution] Instância já existe, atualizando webhook: ${sessionId}`)
       if (webhookUrl) {
         try {
@@ -82,6 +93,12 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
               events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
             },
           })
+        } catch {}
+      }
+      // Atualiza proxy na instância existente, se configurado
+      if (proxyConfig) {
+        try {
+          await this.req('POST', `/proxy/set/${sessionId}`, { proxy: proxyConfig })
         } catch {}
       }
     }
