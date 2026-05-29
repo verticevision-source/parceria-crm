@@ -270,10 +270,37 @@ export class WhatsAppService {
   }
 
   static async getAllSessions() {
-    return prisma.whatsAppSession.findMany({
+    const sessions = await prisma.whatsAppSession.findMany({
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: { createdAt: 'desc' },
     })
+
+    // Para sessões aguardando QR, busca QR atualizado diretamente na Evolution API
+    const provider = getWhatsAppProvider()
+    const refreshed = await Promise.all(sessions.map(async (s) => {
+      if (s.status !== 'WAITING_QR') return s
+      try {
+        // Verifica se já conectou
+        const live = await provider.getStatus(s.id)
+        if (live.status === 'CONNECTED') {
+          const updated = await prisma.whatsAppSession.update({
+            where: { id: s.id },
+            data: { status: 'CONNECTED', phoneNumber: live.phoneNumber || null, connectedAt: new Date(), qrCode: null },
+            include: { user: { select: { id: true, name: true, email: true } } },
+          })
+          if (io) io.to(`user:${s.userId}`).emit('whatsapp-status', { sessionId: s.id, status: 'CONNECTED', phoneNumber: live.phoneNumber })
+          return updated
+        }
+        // Busca QR fresco
+        const qrCode = await provider.getQRCode(s.id)
+        if (qrCode) {
+          return { ...s, qrCode }  // retorna sem persistir — evita write no banco a cada poll
+        }
+      } catch { /* ignora falhas de rede */ }
+      return s
+    }))
+
+    return refreshed
   }
 
   static async sendMessage(userId: string, to: string, body: string) {

@@ -86,12 +86,15 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       }
     }
 
-    // Dispara geração do QR
+    // Dispara geração do QR e captura imediatamente se disponível
+    let qrCode: string | undefined
     try {
-      await this.req('GET', `/instance/connect/${sessionId}`)
+      const qrData = await this.req<any>('GET', `/instance/connect/${sessionId}`)
+      const raw = qrData?.base64 || (qrData?.code ? `data:image/png;base64,${qrData.code}` : null)
+      if (raw) qrCode = raw
     } catch {}
 
-    return { sessionId, status: 'WAITING_QR' }
+    return { sessionId, status: 'WAITING_QR', qrCode }
   }
 
   async disconnect(sessionId: string): Promise<void> {
