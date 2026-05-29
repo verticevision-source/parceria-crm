@@ -12,15 +12,27 @@ export function setSocketIO(socketServer: SocketServer): void {
   setupStatusListener()
 }
 
+async function resolveDbSession(sessionId: string) {
+  // WAHA free tier always uses 'default' as session name — map to actual DB record
+  if (sessionId === 'default') {
+    return prisma.whatsAppSession.findFirst({
+      where: { provider: 'waha', status: { not: 'DISCONNECTED' } },
+      orderBy: { createdAt: 'desc' },
+      include: { user: true },
+    })
+  }
+  return prisma.whatsAppSession.findUnique({
+    where: { id: sessionId },
+    include: { user: true },
+  })
+}
+
 function setupMessageListener(): void {
   const provider = getWhatsAppProvider()
 
   provider.onMessageReceived(async (sessionId: string, message: IncomingMessage) => {
     try {
-      const session = await prisma.whatsAppSession.findUnique({
-        where: { id: sessionId },
-        include: { user: true },
-      })
+      const session = await resolveDbSession(sessionId)
       if (!session) return
 
       let contact = await prisma.contact.findFirst({
@@ -39,14 +51,14 @@ function setupMessageListener(): void {
       }
 
       let conversation = await prisma.conversation.findFirst({
-        where: { userId: session.userId, whatsappSessionId: sessionId, contactId: contact.id },
+        where: { userId: session.userId, whatsappSessionId: session.id, contactId: contact.id },
       })
 
       if (!conversation) {
         conversation = await prisma.conversation.create({
           data: {
             userId: session.userId,
-            whatsappSessionId: sessionId,
+            whatsappSessionId: session.id,
             contactId: contact.id,
             status: 'OPEN',
             lastMessage: message.body,
@@ -70,7 +82,7 @@ function setupMessageListener(): void {
         data: {
           conversationId: conversation.id,
           userId: session.userId,
-          whatsappSessionId: sessionId,
+          whatsappSessionId: session.id,
           contactId: contact.id,
           direction: 'IN',
           type: message.type,
@@ -101,6 +113,13 @@ function setupStatusListener(): void {
 
   provider.onStatusChanged(async (status) => {
     try {
+      // Resolve actual DB session (WAHA sends 'default', not the UUID)
+      const session = await resolveDbSession(status.sessionId)
+      if (!session) {
+        logger.warn(`[WhatsAppService] Sessão não encontrada para status update: ${status.sessionId}`)
+        return
+      }
+
       const updateData: Record<string, unknown> = {
         status: status.status,
         qrCode: status.qrCode || null,
@@ -116,20 +135,28 @@ function setupStatusListener(): void {
         updateData.disconnectedAt = new Date()
       }
 
-      const session = await prisma.whatsAppSession.update({
-        where: { id: status.sessionId },
+      // For WAITING_QR, fetch live QR from provider and include in update
+      let qrCode = status.qrCode
+      if (status.status === 'WAITING_QR' && !qrCode) {
+        qrCode = await provider.getQRCode(session.id) || undefined
+        if (qrCode) updateData.qrCode = qrCode
+      }
+
+      await prisma.whatsAppSession.update({
+        where: { id: session.id },
         data: updateData,
-        include: { user: true },
       })
 
       if (io) {
         io.to(`user:${session.userId}`).emit('whatsapp-status', {
-          sessionId: status.sessionId,
+          sessionId: session.id,
           status: status.status,
           phoneNumber: status.phoneNumber,
-          qrCode: status.qrCode,
+          qrCode,
         })
       }
+
+      logger.info(`[WhatsAppService] Status atualizado: ${session.id} → ${status.status}`)
     } catch (err) {
       logger.error('[WhatsAppService] Erro ao atualizar status da sessão:', err)
     }

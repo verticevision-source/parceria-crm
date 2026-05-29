@@ -39,6 +39,22 @@ export default function WhatsAppConfig() {
 
   useEffect(() => { loadSession() }, [loadSession])
 
+  // Poll for QR code while waiting (WAHA generates it dynamically)
+  useEffect(() => {
+    if (session?.status !== 'WAITING_QR') return
+    const fetchQR = async () => {
+      try {
+        const res = await whatsappApi.getQRCode()
+        if (res.data.data?.qrCode) {
+          setSession(prev => prev ? { ...prev, qrCode: res.data.data.qrCode } : prev)
+        }
+      } catch { /* ignore */ }
+    }
+    fetchQR()
+    const interval = setInterval(fetchQR, 8000)
+    return () => clearInterval(interval)
+  }, [session?.status])
+
   useEffect(() => {
     const socket = getSocket()
     socket.on('whatsapp-status', (data: {
@@ -192,10 +208,10 @@ export default function WhatsAppConfig() {
           <div className="mt-5 px-4 py-3 rounded-xl text-left"
             style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.2)' }}>
             <p className="text-warning text-sm font-semibold flex items-center gap-2">
-              <Activity size={14} /> Modo Demo — Mock Provider
+              <Activity size={14} /> O QR Code expira em ~20 segundos
             </p>
             <p className="text-text-muted text-xs mt-1">
-              Auto-conexão simulada em ~15 segundos. Para uso real, configure o provider no backend.
+              Se expirar, clique em "Novo QR" para gerar um novo código.
             </p>
           </div>
         </div>
