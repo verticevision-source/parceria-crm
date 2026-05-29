@@ -199,7 +199,7 @@ export class WahaWhatsAppProvider implements IWhatsAppProvider {
 
     const data = await this.req<any>('POST', '/api/sendText', {
       session,
-      to: toFormatted,
+      chatId: toFormatted,
       text: body,
     })
     return {
