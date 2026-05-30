@@ -6,6 +6,7 @@ import { AuthRequest } from '../types'
 const createSchema = z.object({
   contactId: z.string().uuid(),
   pipelineStageId: z.string().uuid().optional(),
+  boardId: z.string().uuid().optional(),
   source: z.string().optional(),
   value: z.number().optional(),
   notes: z.string().optional(),

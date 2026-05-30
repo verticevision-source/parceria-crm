@@ -113,6 +113,25 @@ export const pipelineApi = {
   deleteStage: (id: string) => api.delete(`/pipeline/stages/${id}`),
 }
 
+// CRM Boards (multi-board)
+export const crmBoardsApi = {
+  list: () => api.get('/crm-boards'),
+  create: (data: object) => api.post('/crm-boards', data),
+  update: (id: string, data: object) => api.put(`/crm-boards/${id}`, data),
+  remove: (id: string) => api.delete(`/crm-boards/${id}`),
+  getKanban: (id: string) => api.get(`/crm-boards/${id}/kanban`),
+  listMembers: (id: string) => api.get(`/crm-boards/${id}/members`),
+  addMember: (id: string, userId: string, role?: string) =>
+    api.post(`/crm-boards/${id}/members`, { userId, role }),
+  removeMember: (id: string, userId: string) => api.delete(`/crm-boards/${id}/members/${userId}`),
+  addStage: (id: string, name: string, color?: string) =>
+    api.post(`/crm-boards/${id}/stages`, { name, color }),
+  updateStage: (id: string, stageId: string, data: object) =>
+    api.put(`/crm-boards/${id}/stages/${stageId}`, data),
+  deleteStage: (id: string, stageId: string) =>
+    api.delete(`/crm-boards/${id}/stages/${stageId}`),
+}
+
 // Dashboard
 export const dashboardApi = {
   user: () => api.get('/dashboard/user'),

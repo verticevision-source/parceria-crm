@@ -60,6 +60,7 @@ export class LeadService {
   static async create(userId: string, data: {
     contactId: string
     pipelineStageId?: string
+    boardId?: string
     source?: string
     value?: number
     notes?: string
@@ -68,9 +69,20 @@ export class LeadService {
     const contact = await prisma.contact.findUnique({ where: { id: data.contactId } })
     if (!contact) throw new Error('Contato não encontrado')
 
+    // Se boardId fornecido mas sem etapa, usa a primeira etapa do board
+    let pipelineStageId = data.pipelineStageId
+    if (data.boardId && !pipelineStageId) {
+      const firstStage = await prisma.pipelineStage.findFirst({
+        where: { boardId: data.boardId },
+        orderBy: { order: 'asc' },
+      })
+      pipelineStageId = firstStage?.id
+    }
+
     return prisma.lead.create({
       data: {
         ...data,
+        pipelineStageId,
         responsibleUserId: data.responsibleUserId || userId,
         lastInteractionAt: new Date(),
       },
