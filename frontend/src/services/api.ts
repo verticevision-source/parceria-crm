@@ -43,6 +43,7 @@ export const usersApi = {
   update: (id: string, data: object) => api.put(`/users/${id}`, data),
   activate: (id: string) => api.patch(`/users/${id}/activate`),
   deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
+  remove: (id: string) => api.delete(`/users/${id}`),
 }
 
 // WhatsApp

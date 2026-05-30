@@ -56,4 +56,9 @@ export class UserController {
     const user = await UserService.setActive(req.params.id, false)
     res.json({ success: true, data: user })
   }
+
+  static async delete(req: AuthRequest, res: Response): Promise<void> {
+    await UserService.delete(req.params.id, req.user!.userId)
+    res.json({ success: true, message: 'Usuário excluído' })
+  }
 }

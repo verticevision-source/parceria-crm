@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User } from 'lucide-react'
+import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2 } from 'lucide-react'
 import { usersApi } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import { User as UserType } from '../types'
 import Modal from '../components/UI/Modal'
 import { StatusBadge } from '../components/UI/Badge'
@@ -10,6 +11,7 @@ import toast from 'react-hot-toast'
 const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER' }
 
 export default function Users() {
+  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<UserType[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -84,6 +86,18 @@ export default function Users() {
       load()
     } catch {
       toast.error('Erro ao alterar status')
+    }
+  }
+
+  const remove = async (user: UserType) => {
+    if (!confirm(`Excluir o usuário "${user.name}" permanentemente? Esta ação não pode ser desfeita.`)) return
+    try {
+      await usersApi.remove(user.id)
+      toast.success('Usuário excluído')
+      load()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao excluir'
+      toast.error(msg)
     }
   }
 
@@ -201,13 +215,22 @@ export default function Users() {
                         onClick={() => toggleActive(u)}
                         className={`p-1.5 rounded-lg transition-colors ${
                           u.isActive
-                            ? 'text-text-muted hover:text-danger hover:bg-danger/10'
+                            ? 'text-text-muted hover:text-warning hover:bg-warning/10'
                             : 'text-text-muted hover:text-success hover:bg-success/10'
                         }`}
                         title={u.isActive ? 'Desativar' : 'Ativar'}
                       >
                         {u.isActive ? <X size={14} /> : <Check size={14} />}
                       </button>
+                      {currentUser?.id !== u.id && (
+                        <button
+                          onClick={() => remove(u)}
+                          className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors"
+                          title="Excluir permanentemente"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </td>
                 </tr>

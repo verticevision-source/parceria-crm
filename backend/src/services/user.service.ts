@@ -92,4 +92,27 @@ export class UserService {
       select: { id: true, name: true, email: true, role: true, isActive: true },
     })
   }
+
+  static async delete(id: string, requesterId: string) {
+    if (id === requesterId) {
+      throw new Error('Você não pode excluir a si mesmo')
+    }
+
+    const user = await prisma.user.findUnique({ where: { id } })
+    if (!user) throw new Error('Usuário não encontrado')
+
+    // Não permite excluir o último admin
+    if (user.role === 'ADMIN') {
+      const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
+      if (adminCount <= 1) throw new Error('Não é possível excluir o último administrador')
+    }
+
+    // Limpa dependências que bloqueiam a exclusão
+    await prisma.rouletteAgentTeam.deleteMany({ where: { agent: { userId: id } } }).catch(() => {})
+    await prisma.rouletteAgent.deleteMany({ where: { userId: id } }).catch(() => {})
+    await prisma.cRMBoardMember.deleteMany({ where: { userId: id } }).catch(() => {})
+
+    await prisma.user.delete({ where: { id } })
+    return { id }
+  }
 }

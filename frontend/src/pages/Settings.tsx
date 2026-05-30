@@ -521,14 +521,23 @@ export default function Settings() {
   }
 
   const tabs: { id: Tab; label: string; icon: React.ReactNode; adminOnly?: boolean }[] = [
-    { id: 'profile',      label: 'Perfil',           icon: <User size={15} /> },
-    { id: 'security',     label: 'Segurança',         icon: <Lock size={15} /> },
+    // Alterar perfil e senha é exclusivo do administrador (segurança)
+    { id: 'profile',      label: 'Perfil',           icon: <User size={15} />,    adminOnly: true },
+    { id: 'security',     label: 'Segurança',         icon: <Lock size={15} />,    adminOnly: true },
     { id: 'quickreplies', label: 'Respostas Rápidas', icon: <Zap size={15} /> },
     { id: 'pipeline',     label: 'Pipeline',          icon: <Layers size={15} />,  adminOnly: true },
     { id: 'customfields', label: 'Campos Extra',      icon: <Tag size={15} />,     adminOnly: true },
   ]
 
   const visibleTabs = tabs.filter((t) => !t.adminOnly || isAdmin)
+
+  // Garante que a aba ativa seja visível (usuário comum cai em respostas rápidas)
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.id === tab) && visibleTabs[0]) {
+      setTab(visibleTabs[0].id)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAdmin])
 
   return (
     <div className="p-8 max-w-4xl animate-fade-in">
