@@ -9,6 +9,7 @@ import Contacts from './pages/Contacts'
 import Users from './pages/Users'
 import WhatsAppConfig from './pages/WhatsAppConfig'
 import AdminWhatsApp from './pages/AdminWhatsApp'
+import Roulette from './pages/Roulette'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/crm" element={<CRM />} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/whatsapp" element={<WhatsAppConfig />} />
+        <Route path="/roulette" element={<Roulette />} />
         <Route path="/settings" element={<Settings />} />
 
         <Route

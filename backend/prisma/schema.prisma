@@ -62,6 +62,8 @@ model User {
   crmNotes         CRMNote[]
   auditLogs        AuditLog[]
   quickReplies     QuickReply[]
+  rouletteAgent    RouletteAgent?
+  rouletteLogs     RouletteLog[]
 
   @@map("users")
 }
@@ -169,6 +171,7 @@ model Lead {
   contactId         String
   responsibleUserId String
   pipelineStageId   String?
+  campaignId        String?
   status            LeadStatus @default(OPEN)
   source            String?
   value             Float?
@@ -180,8 +183,10 @@ model Lead {
   contact         Contact        @relation(fields: [contactId], references: [id])
   responsibleUser User           @relation("ResponsibleUser", fields: [responsibleUserId], references: [id])
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id])
+  campaign        Campaign?      @relation(fields: [campaignId], references: [id])
   conversations   Conversation[]
   crmNotes        CRMNote[]
+  rouletteLogs    RouletteLog[]
 
   @@map("leads")
 }
@@ -279,6 +284,58 @@ model CustomField {
   values CustomFieldValue[]
 
   @@map("custom_fields")
+}
+
+// ── Roleta de Leads ───────────────────────────────────────────────────────────
+
+// Configuração de cada agente na roleta
+model RouletteAgent {
+  id          String    @id @default(uuid())
+  userId      String    @unique
+  isActive    Boolean   @default(false)  // está disponível para receber leads?
+  weight      Int       @default(1)       // peso relativo (1 = normal, 2 = dobro, etc.)
+  leadsToday  Int       @default(0)
+  leadsTotal  Int       @default(0)
+  lastLeadAt  DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("roulette_agents")
+}
+
+// Campanha de origem dos leads
+model Campaign {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  source      String?  // whatsapp, landing_page, facebook, instagram, etc.
+  isActive    Boolean  @default(true)
+  leadsCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  leads        Lead[]
+  rouletteLogs RouletteLog[]
+
+  @@map("campaigns")
+}
+
+// Log de distribuições da roleta
+model RouletteLog {
+  id         String   @id @default(uuid())
+  userId     String
+  leadId     String?
+  campaignId String?
+  notes      String?
+  createdAt  DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  lead     Lead?     @relation(fields: [leadId], references: [id])
+  campaign Campaign? @relation(fields: [campaignId], references: [id])
+
+  @@map("roulette_logs")
 }
 
 model CustomFieldValue {

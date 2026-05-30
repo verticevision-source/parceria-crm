@@ -10,6 +10,7 @@ import dashboardRoutes from './dashboard.routes'
 import mediaRoutes from './media.routes'
 import quickReplyRoutes from './quickReply.routes'
 import customFieldRoutes from './customField.routes'
+import rouletteRoutes from './roulette.routes'
 
 const router = Router()
 
@@ -24,5 +25,6 @@ router.use('/dashboard', dashboardRoutes)
 router.use('/media', mediaRoutes)
 router.use('/quick-replies', quickReplyRoutes)
 router.use('/custom-fields', customFieldRoutes)
+router.use('/roulette', rouletteRoutes)
 
 export default router
