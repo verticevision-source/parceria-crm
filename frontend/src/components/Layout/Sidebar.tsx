@@ -10,14 +10,13 @@ const navItems = [
   { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/attendance', icon: MessageSquare,   label: 'Atendimento' },
   { to: '/crm',        icon: Briefcase,       label: 'CRM' },
-  { to: '/crm-boards', icon: Layers,          label: 'CRM Boards' },
   { to: '/contacts',   icon: UserCircle,      label: 'Contatos' },
   { to: '/roulette',   icon: Shuffle,         label: 'Roleta' },
-  { to: '/whatsapp',   icon: Smartphone,      label: 'WhatsApp' },
 ]
 
 const adminItems = [
   { to: '/reports',        icon: BarChart3,  label: 'Relatórios' },
+  { to: '/crm-boards',     icon: Layers,     label: 'CRM Boards' },
   { to: '/bulk-messages',  icon: Send,       label: 'Envio em Massa' },
   { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
   { to: '/users',          icon: Users,      label: 'Usuários' },
