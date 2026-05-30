@@ -128,12 +128,12 @@ export class WhatsAppController {
 
   // Send audio voice message
   static async sendAudio(req: AuthRequest, res: Response): Promise<void> {
-    const { to, audio, mimetype: _mimetype } = req.body
+    const { to, audio, mimetype } = req.body
     if (!to || !audio) {
       res.status(400).json({ success: false, message: 'to e audio são obrigatórios' })
       return
     }
-    const message = await WhatsAppService.sendAudio(req.user!.userId, to, audio)
+    const message = await WhatsAppService.sendAudio(req.user!.userId, to, audio, mimetype)
     res.json({ success: true, data: message })
   }
 }

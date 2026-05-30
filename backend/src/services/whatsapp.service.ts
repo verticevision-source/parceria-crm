@@ -496,7 +496,7 @@ export class WhatsAppService {
   }
 
   // Send audio (voice message) via WAHA
-  static async sendAudio(userId: string, to: string, audioData: string) {
+  static async sendAudio(userId: string, to: string, audioData: string, mimetype?: string) {
     const session = await prisma.whatsAppSession.findFirst({
       where: { userId, status: 'CONNECTED' },
     })
@@ -525,7 +525,7 @@ export class WhatsAppService {
 
     const provider = getWhatsAppProvider()
     const result = await (provider as any).sendAudio
-      ? (provider as any).sendAudio(session.id, to, audioData)
+      ? (provider as any).sendAudio(session.id, to, audioData, mimetype)
       : provider.sendMessage(session.id, to, '[Áudio]')
 
     const message = await prisma.message.create({

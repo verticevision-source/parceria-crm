@@ -546,25 +546,50 @@ export default function Attendance() {
                     <div className={msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'}>
                       {/* Audio */}
                       {msg.type === 'AUDIO' && msg.mediaUrl && (
-                        <div className="flex items-center gap-2 min-w-[180px]">
+                        <div className="flex items-center gap-2 min-w-[200px]">
                           <Volume2 size={16} className="flex-shrink-0 opacity-70" />
                           <audio
                             controls
+                            preload="metadata"
                             src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
-                            className="h-8 max-w-[200px]"
+                            className="h-8 max-w-[220px]"
                             style={{ filter: msg.direction === 'OUT' ? 'invert(1)' : 'none', opacity: 0.9 }}
+                            onError={() => toast.error('Não foi possível carregar o áudio')}
                           />
                         </div>
                       )}
-                      {/* Image / Video */}
-                      {msg.mediaUrl && (msg.type === 'IMAGE' || msg.type === 'VIDEO') && (
-                        <img
-                          src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
-                          alt="mídia"
-                          className="max-w-xs rounded-lg mb-1 cursor-pointer"
-                          onClick={() => window.open(`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl!)}`, '_blank')}
-                          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                        />
+                      {/* Image */}
+                      {msg.type === 'IMAGE' && msg.mediaUrl && (
+                        <div className="relative group">
+                          <img
+                            src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                            alt="imagem"
+                            className="max-w-xs rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
+                            loading="lazy"
+                            onClick={() => window.open(`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl!)}`, '_blank')}
+                            onError={(e) => {
+                              const el = e.target as HTMLImageElement
+                              el.style.display = 'none'
+                              el.nextElementSibling?.classList.remove('hidden')
+                            }}
+                          />
+                          <div className="hidden text-xs opacity-60 py-1">[Imagem não disponível]</div>
+                        </div>
+                      )}
+                      {/* Video */}
+                      {msg.type === 'VIDEO' && msg.mediaUrl && (
+                        <div className="relative">
+                          <video
+                            controls
+                            preload="metadata"
+                            className="max-w-xs rounded-lg mb-1"
+                            style={{ maxHeight: '300px' }}
+                            onError={() => toast.error('Não foi possível carregar o vídeo')}
+                          >
+                            <source src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`} />
+                            Seu browser não suporta vídeo.
+                          </video>
+                        </div>
                       )}
                       {/* Document */}
                       {msg.type === 'DOCUMENT' && msg.mediaUrl && (
@@ -572,10 +597,11 @@ export default function Attendance() {
                           href={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm underline"
+                          className="flex items-center gap-2 text-sm underline hover:opacity-80 transition-opacity"
+                          download
                         >
                           <Paperclip size={14} />
-                          Documento
+                          Baixar documento
                         </a>
                       )}
                       {/* Text */}

@@ -188,11 +188,20 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
   }
 
-  async sendAudio(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult> {
+  async sendAudio(sessionId: string, to: string, audioBase64: string, mimetype?: string): Promise<SendMessageResult> {
+    // Meta Cloud API aceita: audio/ogg, audio/mp4, audio/mpeg, audio/amr, audio/webm
+    // Normaliza mimetype para compatibilidade
+    const resolvedMime = mimetype?.split(';')[0].trim() || 'audio/ogg'
+    const ext = resolvedMime.includes('webm') ? 'webm'
+      : resolvedMime.includes('mp4') ? 'mp4'
+      : resolvedMime.includes('mpeg') || resolvedMime.includes('mp3') ? 'mp3'
+      : resolvedMime.includes('amr') ? 'amr'
+      : 'ogg'
+
     return this.sendFile(sessionId, to, {
       data: audioBase64,
-      mimetype: 'audio/ogg; codecs=opus',
-      filename: 'audio.ogg',
+      mimetype: resolvedMime,
+      filename: `audio.${ext}`,
     })
   }
 
