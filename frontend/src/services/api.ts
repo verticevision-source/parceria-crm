@@ -54,6 +54,15 @@ export const aiApi = {
   suggest: (conversationId: string) => api.post('/ai/suggest', { conversationId }),
 }
 
+// Fluxos (chatbot)
+export const flowsApi = {
+  list: () => api.get('/flows'),
+  get: (id: string) => api.get(`/flows/${id}`),
+  create: (name: string) => api.post('/flows', { name }),
+  update: (id: string, data: object) => api.put(`/flows/${id}`, data),
+  remove: (id: string) => api.delete(`/flows/${id}`),
+}
+
 // WhatsApp
 export const whatsappApi = {
   getSession: () => api.get('/whatsapp/session'),

@@ -63,7 +63,9 @@ function setupMessageListener(): void {
         where: { userId: session.userId, whatsappSessionId: session.id, contactId: contact.id },
       })
 
+      let isNewConversation = false
       if (!conversation) {
+        isNewConversation = true
         conversation = await prisma.conversation.create({
           data: {
             userId: session.userId,
@@ -112,13 +114,29 @@ function setupMessageListener(): void {
         })
       }
 
+      // ── Chatbot (fluxo): roda antes da roleta/IA ──
+      let botHandled = false
+      if (message.type === 'TEXT') {
+        try {
+          const { ChatFlowService } = await import('./chatFlow.service')
+          // Continua um fluxo aguardando resposta
+          botHandled = await ChatFlowService.handleInbound(conversation.id, message.body, session.userId, contact.phone)
+          // Ou inicia o fluxo para conversa nova
+          if (!botHandled && isNewConversation) {
+            botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, session.userId, contact.phone)
+          }
+        } catch (e) {
+          logger.error('[WhatsAppService] Erro no fluxo do chatbot:', e)
+        }
+      }
+
       // ── Remarketing: se este contato respondeu a um disparo, marca e devolve à roleta ──
       await handleRemarketingReply(contact.id, contact.phone).catch((e) =>
         logger.error('[WhatsAppService] Erro no retorno de remarketing:', e)
       )
 
-      // ── IA: resposta automática se a conversa estiver em modo auto ──
-      if (conversation.aiAuto && message.type === 'TEXT') {
+      // ── IA: resposta automática (somente se o bot não assumiu) ──
+      if (!botHandled && conversation.aiAuto && message.type === 'TEXT') {
         handleAiAutoReply(conversation.id, session.userId, contact.phone).catch((e) =>
           logger.error('[WhatsAppService] Erro na resposta automática de IA:', e)
         )

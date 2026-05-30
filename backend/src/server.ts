@@ -41,6 +41,14 @@ setSocketIO(io)
 setRouletteSocketIO(io)
 setInternalChatIO(io)
 
+// Verifica timeouts do chatbot a cada 5 minutos
+setInterval(async () => {
+  try {
+    const { ChatFlowService } = await import('./services/chatFlow.service')
+    await ChatFlowService.processTimeouts(30)
+  } catch { /* silencioso */ }
+}, 5 * 60 * 1000)
+
 httpServer.listen(PORT, () => {
   logger.info(`🚀 Servidor rodando na porta ${PORT}`)
   logger.info(`📡 Socket.IO ativo`)

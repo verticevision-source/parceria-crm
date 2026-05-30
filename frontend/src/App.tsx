@@ -14,6 +14,7 @@ import CRMBoards from './pages/CRMBoards'
 import BulkMessage from './pages/BulkMessage'
 import Reports from './pages/Reports'
 import InternalChat from './pages/InternalChat'
+import FlowBuilder from './pages/FlowBuilder'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -75,6 +76,15 @@ export default function App() {
           element={
             <AdminRoute>
               <Reports />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/flows"
+          element={
+            <AdminRoute>
+              <FlowBuilder />
             </AdminRoute>
           }
         />

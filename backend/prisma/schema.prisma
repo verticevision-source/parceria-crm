@@ -482,6 +482,35 @@ model CustomFieldValue {
   @@map("custom_field_values")
 }
 
+// ── Construtor de Fluxo (Chatbot) ─────────────────────────────────────────────
+
+model ChatFlow {
+  id        String   @id @default(uuid())
+  name      String
+  isActive  Boolean  @default(false)
+  nodes     Json     @default("[]")  // nós do React Flow
+  edges     Json     @default("[]")  // conexões do React Flow
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("chat_flows")
+}
+
+model ChatFlowSession {
+  id             String    @id @default(uuid())
+  flowId         String
+  conversationId String    @unique
+  contactId      String
+  currentNodeId  String?
+  status         String    @default("running")  // running | waiting | done
+  lastReply      String?
+  waitingSince   DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@map("chat_flow_sessions")
+}
+
 // ── Configuração de IA ────────────────────────────────────────────────────────
 
 model AIConfig {
