@@ -298,6 +298,12 @@ export class RouletteService {
     })
   }
 
+  static async updateCampaign(id: string, data: {
+    name?: string; description?: string; source?: string; teamId?: string | null
+  }) {
+    return prisma.campaign.update({ where: { id }, data })
+  }
+
   static async deleteCampaign(id: string) {
     return prisma.campaign.delete({ where: { id } })
   }

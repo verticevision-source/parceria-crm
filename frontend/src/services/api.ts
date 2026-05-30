@@ -95,6 +95,7 @@ export const leadsApi = {
   findById: (id: string) => api.get(`/leads/${id}`),
   create: (data: object) => api.post('/leads', data),
   update: (id: string, data: object) => api.put(`/leads/${id}`, data),
+  remove: (id: string) => api.delete(`/leads/${id}`),
   updateStage: (id: string, pipelineStageId: string) =>
     api.patch(`/leads/${id}/stage`, { pipelineStageId }),
   updateStatus: (id: string, status: string) =>

@@ -21,6 +21,7 @@ router.post('/reset-daily', authMiddleware, adminMiddleware, asyncHandler(Roulet
 router.get('/campaigns',              authMiddleware, asyncHandler(RouletteController.listCampaigns))
 router.post('/campaigns',             authMiddleware, adminMiddleware, asyncHandler(RouletteController.createCampaign))
 router.patch('/campaigns/:id/toggle', authMiddleware, adminMiddleware, asyncHandler(RouletteController.toggleCampaign))
+router.put('/campaigns/:id',          authMiddleware, adminMiddleware, asyncHandler(RouletteController.updateCampaign))
 router.delete('/campaigns/:id',       authMiddleware, adminMiddleware, asyncHandler(RouletteController.deleteCampaign))
 
 // ── Times regionais ────────────────────────────────────────────────────────

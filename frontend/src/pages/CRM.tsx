@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
 import { Plus, Phone, User, TrendingUp, Search, Layers, X, Trash2 } from 'lucide-react'
+// Trash2 usado para excluir etapas e leads
 import { leadsApi, pipelineApi, contactsApi, crmBoardsApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { Lead, PipelineStage, Contact, KanbanColumn } from '../types'
@@ -19,7 +20,7 @@ interface Board {
   stages: PipelineStage[]
 }
 
-function LeadCard({ lead, index }: { lead: Lead; index: number }) {
+function LeadCard({ lead, index, onDelete }: { lead: Lead; index: number; onDelete: (id: string) => void }) {
   return (
     <Draggable draggableId={lead.id} index={index}>
       {(provided, snapshot) => (
@@ -27,13 +28,23 @@ function LeadCard({ lead, index }: { lead: Lead; index: number }) {
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`kanban-card mb-3 ${snapshot.isDragging ? 'shadow-glow rotate-1' : ''}`}
+          className={`kanban-card mb-3 group ${snapshot.isDragging ? 'shadow-glow rotate-1' : ''}`}
         >
           <div className="flex items-start justify-between gap-2 mb-2">
             <h4 className="text-text-primary text-sm font-medium leading-tight">
               {lead.contact?.name || 'Sem nome'}
             </h4>
-            <StatusBadge status={lead.status} />
+            <div className="flex items-center gap-1 flex-shrink-0">
+              <StatusBadge status={lead.status} />
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(lead.id) }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-red-500 p-0.5"
+                title="Excluir lead"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
           </div>
           <div className="space-y-1.5">
             {lead.contact?.phone && (
@@ -67,11 +78,12 @@ function LeadCard({ lead, index }: { lead: Lead; index: number }) {
 }
 
 function KanbanCol({
-  column, canManage, onDelete,
+  column, canManage, onDelete, onDeleteLead,
 }: {
   column: KanbanColumn
   canManage: boolean
   onDelete: (id: string) => void
+  onDeleteLead: (id: string) => void
 }) {
   return (
     <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border w-64 flex-shrink-0">
@@ -104,7 +116,7 @@ function KanbanCol({
             }`}
           >
             {column.leads.map((lead, index) => (
-              <LeadCard key={lead.id} lead={lead} index={index} />
+              <LeadCard key={lead.id} lead={lead} index={index} onDelete={onDeleteLead} />
             ))}
             {provided.placeholder}
           </div>
@@ -245,6 +257,19 @@ export default function CRM() {
     }
   }
 
+  const handleDeleteLead = async (leadId: string) => {
+    if (!confirm('Excluir este lead? Esta ação não pode ser desfeita.')) return
+    // Remove otimisticamente da UI
+    setColumns(prev => prev.map(c => ({ ...c, leads: c.leads.filter(l => l.id !== leadId) })))
+    try {
+      await leadsApi.remove(leadId)
+      toast.success('Lead excluído')
+    } catch {
+      toast.error('Erro ao excluir lead')
+      loadData()
+    }
+  }
+
   if (loading) return <PageLoader />
 
   const filteredColumns = columns.map((col) => ({
@@ -341,6 +366,7 @@ export default function CRM() {
                   column={col}
                   canManage={isAdmin && !!boardId}
                   onDelete={handleDeleteStage}
+                  onDeleteLead={handleDeleteLead}
                 />
               ))}
             </div>

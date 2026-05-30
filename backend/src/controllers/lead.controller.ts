@@ -59,6 +59,11 @@ export class LeadController {
     res.json({ success: true, data: lead })
   }
 
+  static async delete(req: AuthRequest, res: Response): Promise<void> {
+    await LeadService.delete(req.params.id, req.user!.userId, req.user!.role)
+    res.json({ success: true, message: 'Lead removido' })
+  }
+
   static async updateStage(req: AuthRequest, res: Response): Promise<void> {
     const { pipelineStageId } = req.body
     if (!pipelineStageId) {

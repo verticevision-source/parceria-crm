@@ -88,6 +88,15 @@ export class RouletteController {
     res.json({ success: true, data: campaign })
   }
 
+  /** PUT /api/roulette/campaigns/:id */
+  static async updateCampaign(req: AuthRequest, res: Response): Promise<void> {
+    const { name, description, source, teamId } = req.body
+    const campaign = await RouletteService.updateCampaign(req.params.id, {
+      name, description, source, teamId: teamId ?? null,
+    })
+    res.json({ success: true, data: campaign })
+  }
+
   /** DELETE /api/roulette/campaigns/:id */
   static async deleteCampaign(req: AuthRequest, res: Response): Promise<void> {
     await RouletteService.deleteCampaign(req.params.id)

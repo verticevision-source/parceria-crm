@@ -74,6 +74,12 @@ export default function Roulette() {
   const [showNewTeam, setShowNewTeam] = useState(false)
   const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1' })
 
+  // Edição
+  const [editTeam, setEditTeam] = useState<Team | null>(null)
+  const [editTeamForm, setEditTeamForm] = useState({ name: '', description: '', color: '#6366f1' })
+  const [editCampaign, setEditCampaign] = useState<Campaign | null>(null)
+  const [editCampForm, setEditCampForm] = useState({ name: '', source: '', teamId: '', description: '' })
+
   // Modal distribuir lead manual
   const [showDistribute, setShowDistribute] = useState(false)
   const [distributeData, setDistributeData] = useState({ contactId: '', campaignId: '', notes: '' })
@@ -170,6 +176,41 @@ export default function Roulette() {
     } catch {
       toast.error('Erro ao deletar time')
     }
+  }
+
+  function openEditTeam(team: Team) {
+    setEditTeam(team)
+    setEditTeamForm({ name: team.name, description: team.description || '', color: team.color })
+  }
+
+  async function handleUpdateTeam() {
+    if (!editTeam || !editTeamForm.name.trim()) { toast.error('Nome obrigatório'); return }
+    try {
+      await api.put(`/roulette/teams/${editTeam.id}`, editTeamForm)
+      toast.success('Time atualizado!')
+      setEditTeam(null)
+      loadData()
+    } catch { toast.error('Erro ao atualizar time') }
+  }
+
+  function openEditCampaign(camp: Campaign) {
+    setEditCampaign(camp)
+    setEditCampForm({
+      name: camp.name, source: camp.source || '',
+      teamId: camp.teamId || '', description: camp.description || '',
+    })
+  }
+
+  async function handleUpdateCampaign() {
+    if (!editCampaign || !editCampForm.name.trim()) { toast.error('Nome obrigatório'); return }
+    try {
+      await api.put(`/roulette/campaigns/${editCampaign.id}`, {
+        ...editCampForm, teamId: editCampForm.teamId || null,
+      })
+      toast.success('Campanha atualizada!')
+      setEditCampaign(null)
+      loadData()
+    } catch { toast.error('Erro ao atualizar campanha') }
   }
 
   async function handleToggleAgentTeam(userId: string, teamId: string) {
@@ -452,9 +493,14 @@ export default function Roulette() {
                       </p>
                     </div>
                   </div>
-                  <button onClick={() => handleDeleteTeam(team.id)} className="text-red-400 hover:text-red-600 p-1">
-                    <Trash2 size={14} />
-                  </button>
+                  <div className="flex gap-1">
+                    <button onClick={() => openEditTeam(team)} className="text-text-muted hover:text-text-primary p-1" title="Editar">
+                      <Edit2 size={14} />
+                    </button>
+                    <button onClick={() => handleDeleteTeam(team.id)} className="text-red-400 hover:text-red-600 p-1" title="Excluir">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -499,12 +545,15 @@ export default function Roulette() {
                   </div>
                 </div>
                 {isAdmin && (
-                  <div className="flex gap-2">
+                  <div className="flex gap-1 items-center">
                     <button onClick={() => handleToggleCampaign(camp.id)}
-                      className={`text-xs px-2 py-1 rounded ${camp.isActive ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}>
+                      className={`text-xs px-2 py-1 rounded ${camp.isActive ? 'text-green-500 hover:bg-green-500/10' : 'text-text-muted hover:bg-bg-hover'}`}>
                       {camp.isActive ? 'Ativa' : 'Inativa'}
                     </button>
-                    <button onClick={() => handleDeleteCampaign(camp.id)} className="text-red-400 hover:text-red-600 p-1">
+                    <button onClick={() => openEditCampaign(camp)} className="text-text-muted hover:text-text-primary p-1" title="Editar">
+                      <Edit2 size={14} />
+                    </button>
+                    <button onClick={() => handleDeleteCampaign(camp.id)} className="text-red-400 hover:text-red-600 p-1" title="Excluir">
                       <Trash2 size={14} />
                     </button>
                   </div>
@@ -648,6 +697,92 @@ export default function Roulette() {
             <div className="flex gap-2 mt-4">
               <button className="btn-primary flex-1" onClick={handleCreateTeam}>Criar Time</button>
               <button className="btn-ghost flex-1" onClick={() => setShowNewTeam(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Editar Time ──────────────────────────────────────────────── */}
+      {editTeam && (
+        <div className="modal-overlay" onClick={() => setEditTeam(null)}>
+          <div className="modal-panel max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2">
+              <Edit2 size={16} className="text-primary" /> Editar Time
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-text-muted">Nome *</label>
+                <input className="input w-full mt-1" value={editTeamForm.name}
+                  onChange={e => setEditTeamForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Descrição</label>
+                <input className="input w-full mt-1" placeholder="Opcional..." value={editTeamForm.description}
+                  onChange={e => setEditTeamForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Cor</label>
+                <div className="flex items-center gap-3 mt-1">
+                  <input type="color" value={editTeamForm.color}
+                    onChange={e => setEditTeamForm(p => ({ ...p, color: e.target.value }))}
+                    className="w-10 h-10 rounded cursor-pointer border border-border" />
+                  <div className="flex gap-2">
+                    {['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899'].map(c => (
+                      <button key={c} onClick={() => setEditTeamForm(p => ({ ...p, color: c }))}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{ backgroundColor: c, borderColor: editTeamForm.color === c ? '#fff' : 'transparent' }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button className="btn-primary flex-1" onClick={handleUpdateTeam}>Salvar</button>
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setEditTeam(null)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Editar Campanha ──────────────────────────────────────────── */}
+      {editCampaign && (
+        <div className="modal-overlay" onClick={() => setEditCampaign(null)}>
+          <div className="modal-panel max-w-md p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2">
+              <Edit2 size={16} className="text-primary" /> Editar Campanha
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-text-muted">Nome *</label>
+                <input className="input w-full mt-1" value={editCampForm.name}
+                  onChange={e => setEditCampForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Origem</label>
+                <select className="input w-full mt-1" value={editCampForm.source}
+                  onChange={e => setEditCampForm(p => ({ ...p, source: e.target.value }))}>
+                  <option value="">Selecione...</option>
+                  <option value="whatsapp">WhatsApp</option>
+                  <option value="instagram">Instagram</option>
+                  <option value="facebook">Facebook</option>
+                  <option value="landing_page">Landing Page</option>
+                  <option value="google">Google Ads</option>
+                  <option value="indicacao">Indicação</option>
+                  <option value="outro">Outro</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Time Regional</label>
+                <select className="input w-full mt-1" value={editCampForm.teamId}
+                  onChange={e => setEditCampForm(p => ({ ...p, teamId: e.target.value }))}>
+                  <option value="">Sem time (pool global)</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button className="btn-primary flex-1" onClick={handleUpdateCampaign}>Salvar</button>
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setEditCampaign(null)}>Cancelar</button>
             </div>
           </div>
         </div>

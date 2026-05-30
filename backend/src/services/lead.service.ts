@@ -139,6 +139,19 @@ export class LeadService {
     })
   }
 
+  static async delete(id: string, userId: string, role: string) {
+    const lead = await prisma.lead.findUnique({ where: { id } })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (role !== 'ADMIN' && lead.responsibleUserId !== userId) throw new Error('Acesso negado')
+
+    // Remove dependências antes de deletar
+    await prisma.rouletteLog.deleteMany({ where: { leadId: id } })
+    await prisma.cRMNote.deleteMany({ where: { leadId: id } })
+    await prisma.conversation.updateMany({ where: { leadId: id }, data: { leadId: null } })
+
+    return prisma.lead.delete({ where: { id } })
+  }
+
   static async createFromConversation(userId: string, conversationId: string, data?: {
     pipelineStageId?: string
     source?: string
