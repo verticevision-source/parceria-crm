@@ -11,6 +11,7 @@ export interface User {
   email: string
   role: UserRole
   isActive: boolean
+  aiEnabled?: boolean
   createdAt: string
   updatedAt?: string
   whatsappSessions?: WhatsAppSession[]
@@ -77,6 +78,7 @@ export interface Conversation {
   lastMessage?: string
   lastMessageAt?: string
   unreadCount: number
+  aiAuto?: boolean
   createdAt: string
   updatedAt: string
   contact?: Contact
@@ -150,6 +152,7 @@ export interface AuthUser {
   name: string
   email: string
   role: UserRole
+  aiEnabled?: boolean
 }
 
 export interface KanbanColumn {

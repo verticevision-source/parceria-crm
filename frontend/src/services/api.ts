@@ -44,6 +44,14 @@ export const usersApi = {
   activate: (id: string) => api.patch(`/users/${id}/activate`),
   deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
   remove: (id: string) => api.delete(`/users/${id}`),
+  setAi: (id: string, enabled: boolean) => api.patch(`/users/${id}/ai`, { enabled }),
+}
+
+// IA
+export const aiApi = {
+  getConfig: () => api.get('/ai/config'),
+  updateConfig: (data: object) => api.put('/ai/config', data),
+  suggest: (conversationId: string) => api.post('/ai/suggest', { conversationId }),
 }
 
 // WhatsApp
@@ -79,6 +87,7 @@ export const conversationsApi = {
   updateStatus: (id: string, status: string) =>
     api.patch(`/conversations/${id}/status`, { status }),
   markAsRead: (id: string) => api.patch(`/conversations/${id}/read`),
+  setAiAuto: (id: string, enabled: boolean) => api.patch(`/conversations/${id}/ai-auto`, { enabled }),
 }
 
 // Contacts

@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles
 } from 'lucide-react'
-import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, api } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
@@ -123,6 +123,11 @@ export default function Attendance() {
   // Roleta
   const [rouletteActive, setRouletteActive] = useState(false)
   const [rouletteToggling, setRouletteToggling] = useState(false)
+
+  // IA
+  const aiAllowed = !!user?.aiEnabled || user?.role === 'ADMIN'
+  const [aiSuggesting, setAiSuggesting] = useState(false)
+  const [aiAuto, setAiAuto] = useState(false)
 
   // Chat extras
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -265,6 +270,7 @@ export default function Attendance() {
 
   const selectConversation = async (conv: Conversation) => {
     setSelected(conv)
+    setAiAuto(!!conv.aiAuto)
     setLoadingMessages(true)
     setShowEmojiPicker(false)
     setShowQuickReplies(false)
@@ -309,6 +315,38 @@ export default function Attendance() {
       setInput(body)
     } finally {
       setSending(false)
+    }
+  }
+
+  const aiSuggest = async () => {
+    if (!selected) return
+    setAiSuggesting(true)
+    try {
+      const res = await aiApi.suggest(selected.id)
+      const suggestion = res.data.data.suggestion
+      if (suggestion) {
+        setInput(suggestion)
+        toast.success('Sugestão da IA pronta — revise e envie')
+      } else {
+        toast.error('A IA não retornou sugestão')
+      }
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao gerar sugestão')
+    } finally {
+      setAiSuggesting(false)
+    }
+  }
+
+  const toggleAiAuto = async () => {
+    if (!selected) return
+    const next = !aiAuto
+    setAiAuto(next)
+    try {
+      await conversationsApi.setAiAuto(selected.id, next)
+      toast.success(next ? '🤖 IA responde automaticamente esta conversa' : 'Resposta automática desligada')
+    } catch {
+      setAiAuto(!next)
+      toast.error('Erro ao alterar modo IA')
     }
   }
 
@@ -592,6 +630,17 @@ export default function Attendance() {
                     ))}
                   </div>
                 )}
+                {aiAllowed && (
+                  <button
+                    onClick={toggleAiAuto}
+                    title={aiAuto ? 'IA automática LIGADA (clique para desligar)' : 'Ligar resposta automática da IA'}
+                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
+                      aiAuto ? 'bg-primary text-white' : 'bg-bg-tertiary text-text-muted hover:text-text-primary border border-border'
+                    }`}
+                  >
+                    <Sparkles size={13} /> {aiAuto ? 'IA Auto' : 'IA'}
+                  </button>
+                )}
                 <StatusBadge status={selected.status} />
                 <div className="flex gap-1">
                   <button onClick={() => updateStatus('OPEN')} title="Aberta"
@@ -852,6 +901,18 @@ export default function Attendance() {
                   >
                     <MapPin size={20} />
                   </button>
+
+                  {/* Sugerir IA */}
+                  {aiAllowed && (
+                    <button
+                      onClick={aiSuggest}
+                      disabled={aiSuggesting}
+                      className="p-2.5 rounded-xl text-primary hover:bg-primary/10 transition-colors flex-shrink-0 disabled:opacity-50"
+                      title="Sugerir resposta com IA"
+                    >
+                      <Sparkles size={20} className={aiSuggesting ? 'animate-pulse' : ''} />
+                    </button>
+                  )}
 
                   {/* Text input */}
                   <textarea

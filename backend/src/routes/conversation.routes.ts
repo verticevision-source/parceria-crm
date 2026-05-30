@@ -12,6 +12,7 @@ router.get('/:id', asyncHandler(ConversationController.findById))
 router.get('/:id/messages', asyncHandler(ConversationController.getMessages))
 router.patch('/:id/status', asyncHandler(ConversationController.updateStatus))
 router.patch('/:id/read', asyncHandler(ConversationController.markAsRead))
+router.patch('/:id/ai-auto', asyncHandler(ConversationController.setAiAuto))
 
 // Tags
 router.post('/:id/tags', asyncHandler(ConversationController.addTag))

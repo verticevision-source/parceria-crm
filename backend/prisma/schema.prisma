@@ -132,6 +132,7 @@ model Conversation {
   lastMessage       String?
   lastMessageAt     DateTime?
   unreadCount       Int                @default(0)
+  aiAuto            Boolean            @default(false)  // IA responde automaticamente nesta conversa
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
@@ -479,6 +480,20 @@ model CustomFieldValue {
 
   @@unique([customFieldId, entityId])
   @@map("custom_field_values")
+}
+
+// ── Configuração de IA ────────────────────────────────────────────────────────
+
+model AIConfig {
+  id           String   @id @default("singleton")
+  provider     String   @default("gemini")  // 'openai' | 'gemini'
+  apiKey       String?
+  model        String?                       // ex: gpt-4o-mini, gemini-1.5-flash
+  systemPrompt String?  @db.Text             // instruções do negócio para a IA
+  enabled      Boolean  @default(false)
+  updatedAt    DateTime @updatedAt @default(now())
+
+  @@map("ai_config")
 }
 
 // ── Chat Interno da Equipe ────────────────────────────────────────────────────

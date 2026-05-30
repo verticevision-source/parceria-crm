@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2 } from 'lucide-react'
+import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2, Sparkles } from 'lucide-react'
 import { usersApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { User as UserType } from '../types'
@@ -86,6 +86,16 @@ export default function Users() {
       load()
     } catch {
       toast.error('Erro ao alterar status')
+    }
+  }
+
+  const toggleAi = async (u: UserType) => {
+    try {
+      await usersApi.setAi(u.id, !u.aiEnabled)
+      toast.success(!u.aiEnabled ? 'IA liberada para ' + u.name : 'IA removida de ' + u.name)
+      load()
+    } catch {
+      toast.error('Erro ao alterar acesso de IA')
     }
   }
 
@@ -222,6 +232,19 @@ export default function Users() {
                       >
                         {u.isActive ? <X size={14} /> : <Check size={14} />}
                       </button>
+                      {u.role !== 'ADMIN' && (
+                        <button
+                          onClick={() => toggleAi(u)}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            u.aiEnabled
+                              ? 'text-primary bg-primary/10 hover:bg-primary/20'
+                              : 'text-text-muted hover:text-primary hover:bg-primary/10'
+                          }`}
+                          title={u.aiEnabled ? 'IA liberada (clique para remover)' : 'Liberar assistente de IA'}
+                        >
+                          <Sparkles size={14} />
+                        </button>
+                      )}
                       {currentUser?.id !== u.id && (
                         <button
                           onClick={() => remove(u)}

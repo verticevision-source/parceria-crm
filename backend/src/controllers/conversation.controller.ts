@@ -56,6 +56,15 @@ export class ConversationController {
     res.json({ success: true, data: conversation })
   }
 
+  static async setAiAuto(req: AuthRequest, res: Response): Promise<void> {
+    const { enabled } = req.body
+    const conversation = await prisma.conversation.update({
+      where: { id: req.params.id },
+      data: { aiAuto: !!enabled },
+    })
+    res.json({ success: true, data: conversation })
+  }
+
   static async addTag(req: AuthRequest, res: Response): Promise<void> {
     const { id } = req.params
     const { tagId } = req.body

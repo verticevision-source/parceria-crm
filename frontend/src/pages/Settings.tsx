@@ -1,15 +1,106 @@
 import { useState, useEffect } from 'react'
 import {
   User, Lock, Save, Shield, Zap, Plus, Trash2, Edit3, Check,
-  X, Layers, Tag, AlignLeft, Hash, ToggleLeft, Calendar, ChevronDown
+  X, Layers, Tag, AlignLeft, Hash, ToggleLeft, Calendar, ChevronDown, Sparkles
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { usersApi, quickRepliesApi, pipelineApi, customFieldsApi } from '../services/api'
+import { usersApi, quickRepliesApi, pipelineApi, customFieldsApi, aiApi } from '../services/api'
 import Logo from '../components/Logo'
 import { QuickReply, PipelineStage, CustomField } from '../types'
 import toast from 'react-hot-toast'
 
-type Tab = 'profile' | 'security' | 'quickreplies' | 'pipeline' | 'customfields'
+type Tab = 'profile' | 'security' | 'quickreplies' | 'pipeline' | 'customfields' | 'ai'
+
+// ─── AI Settings tab ──────────────────────────────────────────────────────────
+function AISettingsTab() {
+  const [cfg, setCfg] = useState({ provider: 'gemini', model: '', systemPrompt: '', enabled: false, hasApiKey: false })
+  const [apiKey, setApiKey] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    aiApi.getConfig()
+      .then((r) => setCfg(r.data.data))
+      .catch(() => toast.error('Erro ao carregar config de IA'))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const save = async () => {
+    setSaving(true)
+    try {
+      const payload: any = {
+        provider: cfg.provider, model: cfg.model,
+        systemPrompt: cfg.systemPrompt, enabled: cfg.enabled,
+      }
+      if (apiKey.trim()) payload.apiKey = apiKey.trim()
+      const r = await aiApi.updateConfig(payload)
+      setCfg(r.data.data)
+      setApiKey('')
+      toast.success('Configuração de IA salva!')
+    } catch { toast.error('Erro ao salvar') }
+    finally { setSaving(false) }
+  }
+
+  if (loading) return <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin" /></div>
+
+  const modelPlaceholder = cfg.provider === 'openai' ? 'gpt-4o-mini' : 'gemini-1.5-flash'
+
+  return (
+    <div className="card max-w-xl">
+      <div className="flex items-center gap-2 mb-5">
+        <Sparkles size={18} className="text-primary-light" />
+        <h3 className="text-text-primary font-bold">Assistente de IA</h3>
+      </div>
+      <div className="space-y-4">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <div onClick={() => setCfg({ ...cfg, enabled: !cfg.enabled })}
+            className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${cfg.enabled ? 'bg-primary' : 'bg-bg-tertiary border border-border'}`}>
+            <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${cfg.enabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+          </div>
+          <span className="text-text-secondary text-sm">Ativar assistente de IA no sistema</span>
+        </label>
+
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1.5">Provedor</label>
+          <select value={cfg.provider} onChange={(e) => setCfg({ ...cfg, provider: e.target.value })} className="input-field">
+            <option value="gemini">Google Gemini (cota grátis)</option>
+            <option value="openai">OpenAI (ChatGPT)</option>
+          </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1.5">
+            Chave de API {cfg.hasApiKey && <span className="text-success text-xs">✓ configurada</span>}
+          </label>
+          <input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)}
+            placeholder={cfg.hasApiKey ? '•••••••• (deixe vazio para manter)' : 'Cole sua API key aqui'} className="input-field" />
+          <p className="text-xs text-text-muted mt-1">
+            {cfg.provider === 'gemini'
+              ? 'Gere grátis em aistudio.google.com/apikey'
+              : 'Gere em platform.openai.com/api-keys (requer créditos)'}
+          </p>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1.5">Modelo (opcional)</label>
+          <input value={cfg.model || ''} onChange={(e) => setCfg({ ...cfg, model: e.target.value })}
+            placeholder={modelPlaceholder} className="input-field" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-text-secondary mb-1.5">Instruções do negócio (system prompt)</label>
+          <textarea value={cfg.systemPrompt || ''} onChange={(e) => setCfg({ ...cfg, systemPrompt: e.target.value })}
+            rows={5} className="input-field resize-none"
+            placeholder="Ex: Você é atendente da Loja X. Seja cordial, responda dúvidas sobre produtos esportivos, horário de funcionamento 9h-18h..." />
+        </div>
+
+        <button onClick={save} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
+          <Save size={15} /> {saving ? 'Salvando...' : 'Salvar Configuração'}
+        </button>
+      </div>
+    </div>
+  )
+}
 
 // ─── Field type icon ───────────────────────────────────────────────────────────
 function FieldTypeIcon({ type }: { type: CustomField['type'] }) {
@@ -527,6 +618,7 @@ export default function Settings() {
     { id: 'quickreplies', label: 'Respostas Rápidas', icon: <Zap size={15} /> },
     { id: 'pipeline',     label: 'Pipeline',          icon: <Layers size={15} />,  adminOnly: true },
     { id: 'customfields', label: 'Campos Extra',      icon: <Tag size={15} />,     adminOnly: true },
+    { id: 'ai',           label: 'IA',                icon: <Sparkles size={15} />, adminOnly: true },
   ]
 
   const visibleTabs = tabs.filter((t) => !t.adminOnly || isAdmin)
@@ -640,6 +732,7 @@ export default function Settings() {
       {tab === 'quickreplies' && <QuickRepliesTab isAdmin={isAdmin} />}
       {tab === 'pipeline'     && isAdmin && <PipelineTab />}
       {tab === 'customfields' && isAdmin && <CustomFieldsTab />}
+      {tab === 'ai'           && isAdmin && <AISettingsTab />}
     </div>
   )
 }

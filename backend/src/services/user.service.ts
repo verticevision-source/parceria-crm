@@ -11,6 +11,7 @@ export class UserService {
         email: true,
         role: true,
         isActive: true,
+        aiEnabled: true,
         createdAt: true,
         updatedAt: true,
         whatsappSessions: {
@@ -90,6 +91,14 @@ export class UserService {
       where: { id },
       data: { isActive },
       select: { id: true, name: true, email: true, role: true, isActive: true },
+    })
+  }
+
+  static async setAiEnabled(id: string, aiEnabled: boolean) {
+    return prisma.user.update({
+      where: { id },
+      data: { aiEnabled },
+      select: { id: true, name: true, aiEnabled: true },
     })
   }
 

@@ -61,4 +61,10 @@ export class UserController {
     await UserService.delete(req.params.id, req.user!.userId)
     res.json({ success: true, message: 'Usuário excluído' })
   }
+
+  static async setAi(req: AuthRequest, res: Response): Promise<void> {
+    const { enabled } = req.body
+    const user = await UserService.setAiEnabled(req.params.id, !!enabled)
+    res.json({ success: true, data: user })
+  }
 }

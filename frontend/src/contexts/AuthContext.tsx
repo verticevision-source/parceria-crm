@@ -37,6 +37,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(storedToken)
         setUser(parsedUser)
         connectSocket(parsedUser.id)
+        // Revalida no servidor (pega aiEnabled, mudanças de role, etc.)
+        authApi.me()
+          .then((r) => {
+            const fresh = r.data.data as AuthUser
+            setUser(fresh)
+            localStorage.setItem('user', JSON.stringify(fresh))
+          })
+          .catch(() => {})
       } catch {
         logout()
       }

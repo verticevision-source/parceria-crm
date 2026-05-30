@@ -117,6 +117,13 @@ function setupMessageListener(): void {
         logger.error('[WhatsAppService] Erro no retorno de remarketing:', e)
       )
 
+      // ── IA: resposta automática se a conversa estiver em modo auto ──
+      if (conversation.aiAuto && message.type === 'TEXT') {
+        handleAiAutoReply(conversation.id, session.userId, contact.phone).catch((e) =>
+          logger.error('[WhatsAppService] Erro na resposta automática de IA:', e)
+        )
+      }
+
       logger.info(`[WhatsAppService] Mensagem recebida de ${message.from} salva no banco`)
     } catch (err) {
       logger.error('[WhatsAppService] Erro ao processar mensagem recebida:', err)
@@ -164,6 +171,23 @@ async function handleRemarketingReply(contactId: string, phone: string): Promise
   } catch (e: any) {
     // Sem agente ativo — apenas loga, não quebra o fluxo
     logger.warn(`[Remarketing] Não foi possível redistribuir: ${e.message}`)
+  }
+}
+
+/**
+ * Resposta automática da IA: gera uma resposta com base no histórico e envia.
+ */
+async function handleAiAutoReply(conversationId: string, userId: string, phone: string): Promise<void> {
+  try {
+    const { AIService } = await import('./ai.service')
+    const reply = await AIService.suggestForConversation(conversationId)
+    if (!reply?.trim()) return
+    // Pequeno atraso para parecer mais natural
+    await new Promise((r) => setTimeout(r, 1500))
+    await WhatsAppService.sendMessage(userId, phone, reply)
+    logger.info(`[IA] Resposta automática enviada para ${phone}`)
+  } catch (e: any) {
+    logger.warn(`[IA] Falha na resposta automática: ${e.message}`)
   }
 }
 
