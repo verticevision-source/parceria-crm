@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
-  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X
+  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../Logo'
@@ -17,6 +17,7 @@ const navItems = [
 ]
 
 const adminItems = [
+  { to: '/reports',        icon: BarChart3,  label: 'Relatórios' },
   { to: '/bulk-messages',  icon: Send,       label: 'Envio em Massa' },
   { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
   { to: '/users',          icon: Users,      label: 'Usuários' },

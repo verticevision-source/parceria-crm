@@ -12,6 +12,7 @@ import AdminWhatsApp from './pages/AdminWhatsApp'
 import Roulette from './pages/Roulette'
 import CRMBoards from './pages/CRMBoards'
 import BulkMessage from './pages/BulkMessage'
+import Reports from './pages/Reports'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -63,6 +64,15 @@ export default function App() {
           element={
             <AdminRoute>
               <BulkMessage />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/reports"
+          element={
+            <AdminRoute>
+              <Reports />
             </AdminRoute>
           }
         />

@@ -13,6 +13,7 @@ import customFieldRoutes from './customField.routes'
 import rouletteRoutes from './roulette.routes'
 import crmBoardRoutes from './crmBoard.routes'
 import bulkMessageRoutes from './bulkMessage.routes'
+import reportRoutes from './report.routes'
 
 const router = Router()
 
@@ -30,5 +31,6 @@ router.use('/custom-fields', customFieldRoutes)
 router.use('/roulette', rouletteRoutes)
 router.use('/crm-boards', crmBoardRoutes)
 router.use('/bulk-messages', bulkMessageRoutes)
+router.use('/reports', reportRoutes)
 
 export default router
