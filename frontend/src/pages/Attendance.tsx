@@ -446,7 +446,7 @@ export default function Attendance() {
   )
 
   return (
-    <div className="flex h-screen overflow-hidden">
+    <div className="flex h-full overflow-hidden">
       {/* ── Sidebar de conversas ── */}
       <div className="w-80 bg-bg-secondary border-r border-border flex flex-col flex-shrink-0">
         <div className="p-4 border-b border-border">

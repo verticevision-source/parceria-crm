@@ -79,6 +79,27 @@ export default function CRMBoards() {
     } catch { toast.error('Erro ao deletar') }
   }
 
+  function openEdit(board: Board) {
+    setEditingBoard(board)
+    setForm({
+      name: board.name, description: board.description || '',
+      color: board.color, icon: board.icon || 'briefcase',
+      preset: 'custom', customStages: '',
+    })
+  }
+
+  async function handleUpdate() {
+    if (!editingBoard || !form.name.trim()) { toast.error('Nome obrigatório'); return }
+    try {
+      await api.put(`/crm-boards/${editingBoard.id}`, {
+        name: form.name, description: form.description, color: form.color,
+      })
+      toast.success('Board atualizado!')
+      setEditingBoard(null)
+      loadBoards()
+    } catch { toast.error('Erro ao atualizar') }
+  }
+
   async function openMembers(board: Board) {
     setManagingMembers(board)
     const [membersRes, usersRes] = await Promise.all([
@@ -156,10 +177,13 @@ export default function CRMBoards() {
                   </div>
                   {isAdmin && (
                     <div className="flex gap-1 ml-2">
-                      <button onClick={() => openMembers(board)} className="p-1.5 hover:bg-bg-secondary rounded-lg" title="Gerenciar membros">
+                      <button onClick={() => openEdit(board)} className="p-1.5 hover:bg-bg-hover rounded-lg" title="Editar board">
+                        <Edit2 size={14} className="text-text-muted" />
+                      </button>
+                      <button onClick={() => openMembers(board)} className="p-1.5 hover:bg-bg-hover rounded-lg" title="Gerenciar membros">
                         <Users size={14} className="text-text-muted" />
                       </button>
-                      <button onClick={() => handleDelete(board.id)} className="p-1.5 hover:bg-red-50 rounded-lg" title="Deletar">
+                      <button onClick={() => handleDelete(board.id)} className="p-1.5 hover:bg-danger/10 rounded-lg" title="Deletar">
                         <Trash2 size={14} className="text-red-400" />
                       </button>
                     </div>
@@ -211,9 +235,11 @@ export default function CRMBoards() {
 
       {/* ── Modal Criar Board ────────────────────────────────────────────── */}
       {showCreate && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-lg shadow-xl my-4">
-            <h3 className="font-bold text-text-primary mb-5 text-lg">Novo Board de CRM</h3>
+        <div className="modal-overlay" onClick={() => setShowCreate(false)}>
+          <div className="modal-panel max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-text-primary mb-5 text-lg flex items-center gap-2">
+              <Layers size={18} className="text-primary" /> Novo Board de CRM
+            </h3>
 
             <div className="space-y-4">
               <div>
@@ -268,7 +294,51 @@ export default function CRMBoards() {
 
             <div className="flex gap-2 mt-5">
               <button className="btn-primary flex-1" onClick={handleCreate}>Criar Board</button>
-              <button className="btn-ghost flex-1" onClick={() => setShowCreate(false)}>Cancelar</button>
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowCreate(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Editar Board ───────────────────────────────────────────── */}
+      {editingBoard && (
+        <div className="modal-overlay" onClick={() => setEditingBoard(null)}>
+          <div className="modal-panel max-w-lg p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-text-primary mb-5 text-lg flex items-center gap-2">
+              <Edit2 size={18} className="text-primary" /> Editar Board
+            </h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-text-muted">Nome *</label>
+                <input className="input w-full mt-1" value={form.name}
+                  onChange={e => setForm(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-text-muted">Descrição</label>
+                <input className="input w-full mt-1" placeholder="Opcional..." value={form.description}
+                  onChange={e => setForm(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-text-muted">Cor</label>
+                <div className="flex items-center gap-3 mt-1">
+                  <input type="color" value={form.color} onChange={e => setForm(p => ({ ...p, color: e.target.value }))}
+                    className="w-10 h-10 rounded cursor-pointer border border-border" />
+                  <div className="flex gap-2">
+                    {['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899','#14b8a6'].map(c => (
+                      <button key={c} onClick={() => setForm(p => ({ ...p, color: c }))}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{ backgroundColor: c, borderColor: form.color === c ? '#fff' : 'transparent' }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-text-muted">
+                💡 Para gerenciar as etapas, abra o board e use o botão "+ Coluna".
+              </p>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button className="btn-primary flex-1" onClick={handleUpdate}>Salvar Alterações</button>
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setEditingBoard(null)}>Cancelar</button>
             </div>
           </div>
         </div>
@@ -276,11 +346,11 @@ export default function CRMBoards() {
 
       {/* ── Modal Gerenciar Membros ────────────────────────────────────── */}
       {managingMembers && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-card rounded-2xl p-6 w-full max-w-md shadow-xl">
+        <div className="modal-overlay" onClick={() => setManagingMembers(null)}>
+          <div className="modal-panel max-w-md p-6" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-bold text-text-primary">Membros — {managingMembers.name}</h3>
-              <button onClick={() => setManagingMembers(null)} className="p-1 hover:bg-bg-secondary rounded"><X size={16} /></button>
+              <button onClick={() => setManagingMembers(null)} className="p-1 hover:bg-bg-hover rounded"><X size={16} /></button>
             </div>
 
             {/* Membros atuais */}

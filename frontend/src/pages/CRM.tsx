@@ -259,12 +259,12 @@ export default function CRM() {
   const modalStages = currentBoard?.stages || legacyStages
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden">
+    <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between p-6 border-b border-border bg-bg-secondary flex-shrink-0">
-        <div className="flex items-center gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 md:p-6 border-b border-border bg-bg-secondary flex-shrink-0">
+        <div className="flex items-center gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+            <h1 className="text-lg md:text-xl font-bold text-text-primary flex items-center gap-2">
               {currentBoard && (
                 <span className="w-3 h-3 rounded-full" style={{ backgroundColor: currentBoard.color }} />
               )}
@@ -292,14 +292,14 @@ export default function CRM() {
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 md:gap-3 flex-wrap">
           <div className="relative">
             <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Buscar lead..."
-              className="input-field pl-9 py-2 text-sm w-52"
+              className="input-field pl-9 py-2 text-sm w-40 md:w-52"
             />
           </div>
           {isAdmin && boardId && (

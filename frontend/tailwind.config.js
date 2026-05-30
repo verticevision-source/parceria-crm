@@ -12,6 +12,9 @@ export default {
           hover:     '#1e2d4a',
           glass:     'rgba(15,22,34,0.85)',
         },
+        // Aliases usados em modais e selects (bg-card, bg-background)
+        card:       '#0f1622',
+        background: '#080d17',
         primary: {
           DEFAULT: '#6366f1',
           hover:   '#5254cc',
