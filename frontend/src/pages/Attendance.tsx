@@ -448,7 +448,7 @@ export default function Attendance() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* ── Sidebar de conversas ── */}
-      <div className="w-80 bg-bg-secondary border-r border-border flex flex-col flex-shrink-0">
+      <div className={`w-full md:w-80 bg-bg-secondary border-r border-border flex-col flex-shrink-0 ${selected ? 'hidden md:flex' : 'flex'}`}>
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-text-primary font-semibold">Atendimento</h2>
@@ -516,7 +516,7 @@ export default function Attendance() {
       </div>
 
       {/* ── Chat ── */}
-      <div className="flex-1 flex flex-col bg-bg-primary min-w-0">
+      <div className={`flex-1 flex-col bg-bg-primary min-w-0 ${selected ? 'flex' : 'hidden md:flex'}`}>
         {!selected ? (
           <div className="flex flex-col items-center justify-center h-full text-text-muted">
             <MessageSquare size={48} className="mb-4 opacity-20" />
@@ -526,7 +526,15 @@ export default function Attendance() {
         ) : (
           <>
             {/* Header */}
-            <div className="flex items-center gap-4 p-4 bg-bg-secondary border-b border-border flex-shrink-0">
+            <div className="flex items-center gap-3 p-4 bg-bg-secondary border-b border-border flex-shrink-0">
+              {/* Voltar (mobile) */}
+              <button
+                onClick={() => setSelected(null)}
+                className="md:hidden text-text-muted hover:text-text-primary p-1 -ml-1 flex-shrink-0"
+                title="Voltar"
+              >
+                <ChevronRight size={20} className="rotate-180" />
+              </button>
               <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center flex-shrink-0">
                 <span className="text-text-secondary font-medium text-sm">
                   {selected.contact?.name?.charAt(0).toUpperCase() || '?'}
@@ -842,9 +850,9 @@ export default function Attendance() {
         )}
       </div>
 
-      {/* ── Painel lateral — dados do contato ── */}
+      {/* ── Painel lateral — dados do contato (oculto em telas menores) ── */}
       {selected && selected.contact && (
-        <div className="w-72 bg-bg-secondary border-l border-border overflow-y-auto flex-shrink-0">
+        <div className="hidden lg:block w-72 bg-bg-secondary border-l border-border overflow-y-auto flex-shrink-0">
           <div className="p-5">
             <div className="text-center mb-5">
               <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-3">
