@@ -2,8 +2,10 @@ export interface IncomingMessage {
   externalId: string
   from: string
   body: string
-  type: 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO'
+  type: 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO' | 'LOCATION'
   mediaUrl?: string
+  latitude?: number
+  longitude?: number
   timestamp: Date
 }
 
@@ -38,6 +40,7 @@ export interface IWhatsAppProvider {
   sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult>
   sendFile?(sessionId: string, to: string, file: SendFilePayload): Promise<SendMessageResult>
   sendAudio?(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult>
+  sendLocation?(sessionId: string, to: string, latitude: number, longitude: number, name?: string, address?: string): Promise<SendMessageResult>
   onMessageReceived(callback: (sessionId: string, message: IncomingMessage) => void): void
   onStatusChanged(callback: (status: ConnectionStatus) => void): void
 }

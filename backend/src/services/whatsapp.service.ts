@@ -97,6 +97,8 @@ function setupMessageListener(): void {
           type: message.type,
           textBody: message.body,
           mediaUrl: message.mediaUrl,
+          latitude: message.latitude ?? null,
+          longitude: message.longitude ?? null,
           externalMessageId: message.externalId,
           sentAt: message.timestamp,
         },
@@ -607,6 +609,58 @@ export class WhatsAppService {
       io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
     }
 
+    return message
+  }
+
+  // Envia localização
+  static async sendLocation(
+    userId: string, to: string,
+    latitude: number, longitude: number, name?: string
+  ) {
+    let session = await prisma.whatsAppSession.findFirst({ where: { userId, status: 'CONNECTED' } })
+    if (!session) {
+      session = await prisma.whatsAppSession.findFirst({ where: { status: 'CONNECTED' }, orderBy: { createdAt: 'desc' } })
+    }
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+
+    let contact = await prisma.contact.findFirst({ where: { userId, phone: to } })
+    if (!contact) contact = await prisma.contact.create({ data: { userId, name: to, phone: to } })
+
+    let conversation = await prisma.conversation.findFirst({
+      where: { userId, whatsappSessionId: session.id, contactId: contact.id },
+    })
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          userId, whatsappSessionId: session.id, contactId: contact.id,
+          status: 'OPEN', lastMessage: '[Localização]', lastMessageAt: new Date(),
+        },
+      })
+    }
+
+    const provider = getWhatsAppProvider()
+    const result = (provider as any).sendLocation
+      ? await (provider as any).sendLocation(session.id, to, latitude, longitude, name)
+      : await provider.sendMessage(session.id, to, `Localização: https://maps.google.com/?q=${latitude},${longitude}`)
+
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conversation.id,
+        userId, whatsappSessionId: session.id, contactId: contact.id,
+        direction: 'OUT', type: 'LOCATION',
+        textBody: name || null,
+        latitude, longitude,
+        externalMessageId: result?.externalId,
+        sentAt: result?.sentAt || new Date(),
+      },
+    })
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessage: '[Localização]', lastMessageAt: new Date() },
+    })
+
+    if (io) io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
     return message
   }
 }

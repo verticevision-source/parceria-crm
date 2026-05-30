@@ -136,4 +136,17 @@ export class WhatsAppController {
     const message = await WhatsAppService.sendAudio(req.user!.userId, to, audio, mimetype)
     res.json({ success: true, data: message })
   }
+
+  // Send location
+  static async sendLocation(req: AuthRequest, res: Response): Promise<void> {
+    const { to, latitude, longitude, name } = req.body
+    if (!to || latitude == null || longitude == null) {
+      res.status(400).json({ success: false, message: 'to, latitude e longitude são obrigatórios' })
+      return
+    }
+    const message = await WhatsAppService.sendLocation(
+      req.user!.userId, to, Number(latitude), Number(longitude), name
+    )
+    res.json({ success: true, data: message })
+  }
 }

@@ -188,6 +188,28 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
   }
 
+  async sendLocation(
+    _sessionId: string, to: string,
+    latitude: number, longitude: number, name?: string, address?: string
+  ): Promise<SendMessageResult> {
+    const number = this.normalizeNumber(to)
+    const data = await this.req<any>('POST', `/${this.phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: number,
+      type: 'location',
+      location: {
+        latitude, longitude,
+        ...(name && { name }),
+        ...(address && { address }),
+      },
+    })
+    return {
+      externalId: data?.messages?.[0]?.id || `cloud_${Date.now()}`,
+      sentAt: new Date(),
+    }
+  }
+
   async sendAudio(sessionId: string, to: string, audioBase64: string, mimetype?: string): Promise<SendMessageResult> {
     // Meta Cloud API aceita: audio/ogg, audio/mp4, audio/mpeg, audio/amr, audio/webm
     // Normaliza mimetype para compatibilidade
@@ -275,6 +297,13 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
             timestamp: new Date(Number(msg.timestamp) * 1000),
           }
 
+          // Localização recebida
+          if (msg.type === 'location' && msg.location) {
+            incoming.latitude = msg.location.latitude
+            incoming.longitude = msg.location.longitude
+            incoming.body = msg.location.name || msg.location.address || ''
+          }
+
           logger.info(`[CloudAPI] Mensagem de ${from} | tipo: ${type}`)
 
           // A sessionId na Cloud API é o phoneNumberId
@@ -322,6 +351,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
       case 'voice': return 'AUDIO'
       case 'document': return 'DOCUMENT'
       case 'video': return 'VIDEO'
+      case 'location': return 'LOCATION'
       default: return 'TEXT'
     }
   }

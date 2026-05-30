@@ -312,6 +312,38 @@ export default function Attendance() {
     }
   }
 
+  const sendLocation = () => {
+    if (!selected?.contact?.phone) return
+    if (!navigator.geolocation) {
+      toast.error('Geolocalização não suportada neste navegador')
+      return
+    }
+    toast.loading('Obtendo sua localização...', { id: 'geo' })
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        toast.dismiss('geo')
+        setSending(true)
+        try {
+          await whatsappApi.sendLocation(
+            selected.contact!.phone,
+            pos.coords.latitude,
+            pos.coords.longitude,
+          )
+          toast.success('Localização enviada!')
+        } catch {
+          toast.error('Erro ao enviar localização')
+        } finally {
+          setSending(false)
+        }
+      },
+      () => {
+        toast.dismiss('geo')
+        toast.error('Não foi possível obter a localização (permissão negada)')
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
   const sendMediaFile = async (file: File) => {
     if (!selected) return
     setSending(true)
@@ -652,10 +684,27 @@ export default function Attendance() {
                           Baixar documento
                         </a>
                       )}
+                      {/* Location */}
+                      {msg.type === 'LOCATION' && msg.latitude != null && msg.longitude != null && (
+                        <a
+                          href={`https://www.google.com/maps?q=${msg.latitude},${msg.longitude}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block w-56 rounded-lg overflow-hidden border border-white/10 hover:opacity-90 transition-opacity"
+                        >
+                          <div className="h-24 flex items-center justify-center bg-bg-tertiary">
+                            <MapPin size={28} className="text-red-400" />
+                          </div>
+                          <div className="px-3 py-2 bg-black/20">
+                            <p className="text-xs font-medium">{msg.textBody || 'Localização'}</p>
+                            <p className="text-[10px] opacity-70">Ver no Google Maps →</p>
+                          </div>
+                        </a>
+                      )}
                       {/* Text */}
-                      {msg.textBody ? (
+                      {msg.textBody && msg.type !== 'LOCATION' ? (
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.textBody}</p>
-                      ) : !msg.mediaUrl && msg.type !== 'AUDIO' ? (
+                      ) : !msg.mediaUrl && msg.type !== 'AUDIO' && msg.type !== 'LOCATION' ? (
                         <p className="text-sm leading-relaxed opacity-60">[mídia]</p>
                       ) : null}
                       <p className={`text-xs mt-1 ${msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'}`}>
@@ -792,6 +841,16 @@ export default function Attendance() {
                     title="Enviar arquivo"
                   >
                     <Paperclip size={20} />
+                  </button>
+
+                  {/* Location */}
+                  <button
+                    onClick={sendLocation}
+                    disabled={sending}
+                    className="p-2.5 rounded-xl text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
+                    title="Enviar localização atual"
+                  >
+                    <MapPin size={20} />
                   </button>
 
                   {/* Text input */}

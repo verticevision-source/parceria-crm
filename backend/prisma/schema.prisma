@@ -49,6 +49,7 @@ enum MessageType {
   AUDIO
   DOCUMENT
   VIDEO
+  LOCATION
 }
 
 model User {
@@ -151,6 +152,8 @@ model Message {
   type              MessageType      @default(TEXT)
   textBody          String?          @db.Text
   mediaUrl          String?
+  latitude          Float?
+  longitude         Float?
   externalMessageId String?
   sentAt            DateTime?
   createdAt         DateTime         @default(now())

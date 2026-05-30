@@ -1,0 +1,5 @@
+-- Mensagens de localização
+ALTER TYPE "MessageType" ADD VALUE IF NOT EXISTS 'LOCATION';
+
+ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "latitude" DOUBLE PRECISION;
+ALTER TABLE "messages" ADD COLUMN IF NOT EXISTS "longitude" DOUBLE PRECISION;

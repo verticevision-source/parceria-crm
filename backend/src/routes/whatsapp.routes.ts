@@ -19,6 +19,7 @@ router.post('/send', asyncHandler(WhatsAppController.sendMessage))
 // Media
 router.post('/send-media', upload.single('file'), asyncHandler(WhatsAppController.sendMedia))
 router.post('/send-audio', asyncHandler(WhatsAppController.sendAudio))
+router.post('/send-location', asyncHandler(WhatsAppController.sendLocation))
 
 // DEV: simula mensagem entrante
 router.post('/simulate', asyncHandler(WhatsAppController.simulateMessage))

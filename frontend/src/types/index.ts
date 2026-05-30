@@ -3,7 +3,7 @@ export type SessionStatus = 'CONNECTED' | 'DISCONNECTED' | 'WAITING_QR' | 'ERROR
 export type ConversationStatus = 'OPEN' | 'PENDING' | 'CLOSED'
 export type LeadStatus = 'OPEN' | 'WON' | 'LOST'
 export type MessageDirection = 'IN' | 'OUT'
-export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO'
+export type MessageType = 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO' | 'LOCATION'
 
 export interface User {
   id: string
@@ -97,6 +97,8 @@ export interface Message {
   type: MessageType
   textBody?: string
   mediaUrl?: string
+  latitude?: number
+  longitude?: number
   externalMessageId?: string
   sentAt?: string
   createdAt: string
