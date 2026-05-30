@@ -12,6 +12,13 @@ enum UserRole {
   USER
 }
 
+enum BulkMessageStatus {
+  DRAFT
+  RUNNING
+  DONE
+  FAILED
+}
+
 enum SessionStatus {
   CONNECTED
   DISCONNECTED
@@ -64,6 +71,8 @@ model User {
   quickReplies     QuickReply[]
   rouletteAgent    RouletteAgent?
   rouletteLogs     RouletteLog[]
+  crmBoardMembers  CRMBoardMember[]
+  bulkMessages     BulkMessage[]
 
   @@map("users")
 }
@@ -99,11 +108,12 @@ model Contact {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  conversations Conversation[]
-  messages      Message[]
-  leads         Lead[]
-  tags          ContactTag[]
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  conversations    Conversation[]
+  messages         Message[]
+  leads            Lead[]
+  tags             ContactTag[]
+  bulkRecipients   BulkMessageRecipient[]
 
   @@map("contacts")
 }
@@ -158,9 +168,11 @@ model PipelineStage {
   name      String
   order     Int
   color     String   @default("#6366f1")
+  boardId   String?  // null = estágio global (legado)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  board CRMBoard? @relation(fields: [boardId], references: [id], onDelete: Cascade)
   leads Lead[]
 
   @@map("pipeline_stages")
@@ -172,10 +184,12 @@ model Lead {
   responsibleUserId String
   pipelineStageId   String?
   campaignId        String?
+  boardId           String?    // CRM board ao qual pertence
   status            LeadStatus @default(OPEN)
   source            String?
   value             Float?
   notes             String?    @db.Text
+  tags              String?    @db.Text  // JSON array de tags
   createdAt         DateTime   @default(now())
   updatedAt         DateTime   @updatedAt
   lastInteractionAt DateTime?
@@ -184,6 +198,7 @@ model Lead {
   responsibleUser User           @relation("ResponsibleUser", fields: [responsibleUserId], references: [id])
   pipelineStage   PipelineStage? @relation(fields: [pipelineStageId], references: [id])
   campaign        Campaign?      @relation(fields: [campaignId], references: [id])
+  board           CRMBoard?      @relation(fields: [boardId], references: [id])
   conversations   Conversation[]
   crmNotes        CRMNote[]
   rouletteLogs    RouletteLog[]
@@ -291,14 +306,14 @@ model CustomField {
 // Time regional (ex: Sorocaba, Rio Preto)
 model RouletteTeam {
   id          String   @id @default(uuid())
-  name        String   // "Sorocaba", "Rio Preto"
+  name        String
   description String?
   color       String   @default("#6366f1")
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  agents    RouletteAgent[]
+  agents    RouletteAgentTeam[]
   campaigns Campaign[]
 
   @@map("roulette_teams")
@@ -308,7 +323,6 @@ model RouletteTeam {
 model RouletteAgent {
   id          String    @id @default(uuid())
   userId      String    @unique
-  teamId      String?                      // time ao qual pertence (null = sem time)
   isActive    Boolean   @default(false)
   weight      Int       @default(1)
   leadsToday  Int       @default(0)
@@ -317,10 +331,23 @@ model RouletteAgent {
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
-  user User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  team RouletteTeam? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  teams RouletteAgentTeam[]  // many-to-many com times
 
   @@map("roulette_agents")
+}
+
+// Relação many-to-many: agente pode estar em vários times
+model RouletteAgentTeam {
+  id      String @id @default(uuid())
+  agentId String
+  teamId  String
+
+  agent RouletteAgent @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  team  RouletteTeam  @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([agentId, teamId])
+  @@map("roulette_agent_teams")
 }
 
 // Campanha de origem dos leads
@@ -356,6 +383,82 @@ model RouletteLog {
   campaign Campaign? @relation(fields: [campaignId], references: [id])
 
   @@map("roulette_logs")
+}
+
+// ── CRM Dinâmico ──────────────────────────────────────────────────────────────
+
+// Boards de CRM (ex: Vendas, Gerente de Conta, Pós-Venda)
+model CRMBoard {
+  id          String   @id @default(uuid())
+  name        String   // "Vendas", "Gerente de Conta"
+  description String?
+  color       String   @default("#6366f1")
+  icon        String   @default("briefcase")  // lucide icon name
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  stages  PipelineStage[]
+  leads   Lead[]
+  members CRMBoardMember[]
+
+  @@map("crm_boards")
+}
+
+// Usuários membros de um board
+model CRMBoardMember {
+  id      String @id @default(uuid())
+  boardId String
+  userId  String
+  role    String @default("member")  // "member", "manager"
+
+  board CRMBoard @relation(fields: [boardId], references: [id], onDelete: Cascade)
+  user  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([boardId, userId])
+  @@map("crm_board_members")
+}
+
+// ── Envio em Massa / Remarketing ──────────────────────────────────────────────
+
+model BulkMessage {
+  id          String            @id @default(uuid())
+  name        String            // nome da campanha/ação
+  message     String            @db.Text  // texto da mensagem
+  createdById String
+  status      BulkMessageStatus @default(DRAFT)
+  // Filtros de alvo (JSON)
+  filterType  String            // "tag", "stage", "board", "no_response", "campaign"
+  filterValue String?           // valor do filtro (tagName, stageId, boardId, etc.)
+  filterDays  Int?              // para "no_response": sem resposta há X dias
+  totalCount  Int               @default(0)   // total de destinatários
+  sentCount   Int               @default(0)   // enviados
+  failedCount Int               @default(0)   // falhados
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  createdBy  User                   @relation(fields: [createdById], references: [id])
+  recipients BulkMessageRecipient[]
+
+  @@map("bulk_messages")
+}
+
+model BulkMessageRecipient {
+  id            String   @id @default(uuid())
+  bulkMessageId String
+  contactId     String
+  phone         String
+  status        String   @default("pending")  // pending, sent, failed, replied
+  sentAt        DateTime?
+  repliedAt     DateTime?
+  errorMessage  String?
+
+  bulkMessage BulkMessage @relation(fields: [bulkMessageId], references: [id], onDelete: Cascade)
+  contact     Contact     @relation(fields: [contactId], references: [id])
+
+  @@map("bulk_message_recipients")
 }
 
 model CustomFieldValue {

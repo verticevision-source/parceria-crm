@@ -16,6 +16,12 @@ interface Team {
   _count: { agents: number; campaigns: number }
 }
 
+interface AgentTeam {
+  teamId: string
+  teamName: string
+  teamColor: string
+}
+
 interface AgentStatus {
   userId: string
   name: string
@@ -25,9 +31,7 @@ interface AgentStatus {
   leadsToday: number
   leadsTotal: number
   lastLeadAt: string | null
-  teamId: string | null
-  teamName: string | null
-  teamColor: string | null
+  teams: AgentTeam[]
 }
 
 interface Campaign {
@@ -168,13 +172,13 @@ export default function Roulette() {
     }
   }
 
-  async function handleAssignTeam(userId: string, teamId: string) {
+  async function handleToggleAgentTeam(userId: string, teamId: string) {
     try {
-      await api.patch(`/roulette/agents/${userId}/team`, { teamId: teamId || null })
-      toast.success('Time atribuído!')
+      const res = await api.patch(`/roulette/agents/${userId}/teams/${teamId}`)
+      toast.success(res.data.data.added ? 'Time adicionado!' : 'Time removido')
       loadData()
     } catch {
-      toast.error('Erro ao atribuir time')
+      toast.error('Erro ao alterar time')
     }
   }
 
@@ -360,52 +364,64 @@ export default function Roulette() {
             <div className="divide-y divide-border">
               {agents.length === 0 ? (
                 <p className="p-4 text-sm text-text-muted text-center">Nenhum agente cadastrado</p>
-              ) : agents.map((agent) => (
-                <div key={agent.userId} className="flex items-center justify-between p-4">
-                  <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${agent.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <div>
-                      <p className="font-medium text-text-primary text-sm">{agent.name}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {agent.teamName ? (
-                          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white font-medium"
-                            style={{ backgroundColor: agent.teamColor || '#6366f1' }}>
-                            <MapPin size={10} />{agent.teamName}
-                          </span>
-                        ) : (
-                          <span className="text-xs text-text-muted">Sem time</span>
-                        )}
+              ) : agents.map((agent) => {
+                const agentTeamIds = new Set(agent.teams.map(t => t.teamId))
+                return (
+                <div key={agent.userId} className="p-4">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-3 h-3 rounded-full flex-shrink-0 ${agent.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                      <div>
+                        <p className="font-medium text-text-primary text-sm">{agent.name}</p>
+                        <p className="text-xs text-text-muted">{agent.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <div className="text-center">
+                        <p className="text-sm font-semibold text-primary">{agent.leadsToday}</p>
+                        <p className="text-xs text-text-muted">hoje</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-sm font-semibold">{agent.leadsTotal}</p>
+                        <p className="text-xs text-text-muted">total</p>
+                      </div>
+                      <div className="flex items-center gap-1" title="Peso na distribuição">
+                        <Award size={14} className="text-yellow-500" />
+                        <select
+                          value={agent.weight}
+                          onChange={(e) => handleSetWeight(agent.userId, Number(e.target.value))}
+                          className="text-xs border border-border rounded px-1 py-0.5 bg-background"
+                        >
+                          {[1,2,3,4,5,6,7,8,9,10].map(w => <option key={w} value={w}>{w}x</option>)}
+                        </select>
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    {/* Atribuir time */}
-                    <select
-                      value={agent.teamId || ''}
-                      onChange={(e) => handleAssignTeam(agent.userId, e.target.value)}
-                      className="text-xs border border-border rounded px-1.5 py-0.5 bg-background max-w-[120px]"
-                      title="Time"
-                    >
-                      <option value="">Sem time</option>
-                      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
-                    </select>
-                    <div className="text-center">
-                      <p className="text-sm font-semibold text-primary">{agent.leadsToday}</p>
-                      <p className="text-xs text-text-muted">hoje</p>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <Award size={14} className="text-yellow-500" />
-                      <select
-                        value={agent.weight}
-                        onChange={(e) => handleSetWeight(agent.userId, Number(e.target.value))}
-                        className="text-xs border border-border rounded px-1 py-0.5 bg-background"
-                      >
-                        {[1,2,3,4,5,6,7,8,9,10].map(w => <option key={w} value={w}>{w}x</option>)}
-                      </select>
-                    </div>
+
+                  {/* Times — clique para adicionar/remover (multi-seleção) */}
+                  <div className="flex items-center gap-1.5 flex-wrap mt-2 pl-6">
+                    <MapPin size={12} className="text-text-muted" />
+                    {teams.length === 0 ? (
+                      <span className="text-xs text-text-muted">Crie times na aba "Times"</span>
+                    ) : teams.map(t => {
+                      const active = agentTeamIds.has(t.id)
+                      return (
+                        <button
+                          key={t.id}
+                          onClick={() => handleToggleAgentTeam(agent.userId, t.id)}
+                          className={`text-xs px-2 py-0.5 rounded-full font-medium transition-all border ${
+                            active ? 'text-white border-transparent' : 'text-text-muted border-border hover:border-text-muted'
+                          }`}
+                          style={active ? { backgroundColor: t.color } : {}}
+                          title={active ? `Remover de ${t.name}` : `Adicionar a ${t.name}`}
+                        >
+                          {active ? '✓ ' : '+ '}{t.name}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           </div>
           )}

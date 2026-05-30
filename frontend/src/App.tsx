@@ -10,6 +10,8 @@ import Users from './pages/Users'
 import WhatsAppConfig from './pages/WhatsAppConfig'
 import AdminWhatsApp from './pages/AdminWhatsApp'
 import Roulette from './pages/Roulette'
+import CRMBoards from './pages/CRMBoards'
+import BulkMessage from './pages/BulkMessage'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -53,7 +55,17 @@ export default function App() {
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/whatsapp" element={<WhatsAppConfig />} />
         <Route path="/roulette" element={<Roulette />} />
+        <Route path="/crm-boards" element={<CRMBoards />} />
         <Route path="/settings" element={<Settings />} />
+
+        <Route
+          path="/bulk-messages"
+          element={
+            <AdminRoute>
+              <BulkMessage />
+            </AdminRoute>
+          }
+        />
 
         <Route
           path="/users"

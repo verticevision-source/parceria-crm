@@ -76,7 +76,9 @@ export class RouletteService {
         id: true,
         name: true,
         email: true,
-        rouletteAgent: { include: { team: true } },
+        rouletteAgent: {
+          include: { teams: { include: { team: true } } },
+        },
       },
       orderBy: { name: 'asc' },
     })
@@ -90,9 +92,11 @@ export class RouletteService {
       leadsToday: u.rouletteAgent?.leadsToday ?? 0,
       leadsTotal: u.rouletteAgent?.leadsTotal ?? 0,
       lastLeadAt: u.rouletteAgent?.lastLeadAt ?? null,
-      teamId: u.rouletteAgent?.teamId ?? null,
-      teamName: u.rouletteAgent?.team?.name ?? null,
-      teamColor: u.rouletteAgent?.team?.color ?? null,
+      teams: u.rouletteAgent?.teams.map(at => ({
+        teamId: at.teamId,
+        teamName: at.team.name,
+        teamColor: at.team.color,
+      })) ?? [],
     }))
   }
 
@@ -116,20 +120,36 @@ export class RouletteService {
   }
 
   static async deleteTeam(id: string) {
-    // Remove vínculo dos agentes antes de deletar
-    await prisma.rouletteAgent.updateMany({ where: { teamId: id }, data: { teamId: null } })
+    // Remove vínculos many-to-many e campanhas antes de deletar
+    await prisma.rouletteAgentTeam.deleteMany({ where: { teamId: id } })
     await prisma.campaign.updateMany({ where: { teamId: id }, data: { teamId: null } })
     return prisma.rouletteTeam.delete({ where: { id } })
   }
 
-  /** Atribui agente a um time (null = sem time / pool global) */
-  static async assignAgentToTeam(userId: string, teamId: string | null) {
-    await prisma.rouletteAgent.upsert({
+  /** Atribui/remove agente de um time (many-to-many) */
+  static async toggleAgentTeam(userId: string, teamId: string): Promise<{ added: boolean }> {
+    // Garante que o agente existe
+    const agent = await prisma.rouletteAgent.upsert({
       where: { userId },
-      create: { userId, teamId, isActive: false },
-      update: { teamId },
+      create: { userId, isActive: false },
+      update: {},
     })
-    if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
+
+    const existing = await prisma.rouletteAgentTeam.findUnique({
+      where: { agentId_teamId: { agentId: agent.id, teamId } },
+    })
+
+    if (existing) {
+      await prisma.rouletteAgentTeam.delete({
+        where: { agentId_teamId: { agentId: agent.id, teamId } },
+      })
+      if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
+      return { added: false }
+    } else {
+      await prisma.rouletteAgentTeam.create({ data: { agentId: agent.id, teamId } })
+      if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
+      return { added: true }
+    }
   }
 
   // ── Distribui um lead para o próximo agente ativo ─────────────────────────
@@ -149,10 +169,10 @@ export class RouletteService {
       teamId = campaign?.teamId ?? null
     }
 
-    // Filtra por time se a campanha tiver um, senão usa pool global
+    // Filtra por time via many-to-many
     const whereAgents: any = { isActive: true }
     if (teamId) {
-      whereAgents.teamId = teamId
+      whereAgents.teams = { some: { teamId } }
     }
 
     const activeAgents = await prisma.rouletteAgent.findMany({

@@ -28,6 +28,6 @@ router.get('/teams',             authMiddleware, asyncHandler(RouletteController
 router.post('/teams',            authMiddleware, adminMiddleware, asyncHandler(RouletteController.createTeam))
 router.put('/teams/:id',         authMiddleware, adminMiddleware, asyncHandler(RouletteController.updateTeam))
 router.delete('/teams/:id',      authMiddleware, adminMiddleware, asyncHandler(RouletteController.deleteTeam))
-router.patch('/agents/:userId/team', authMiddleware, adminMiddleware, asyncHandler(RouletteController.assignTeam))
+router.patch('/agents/:userId/teams/:teamId', authMiddleware, adminMiddleware, asyncHandler(RouletteController.toggleAgentTeam))
 
 export default router

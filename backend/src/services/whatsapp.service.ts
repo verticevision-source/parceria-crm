@@ -110,11 +110,59 @@ function setupMessageListener(): void {
         })
       }
 
+      // ── Remarketing: se este contato respondeu a um disparo, marca e devolve à roleta ──
+      await handleRemarketingReply(contact.id, contact.phone).catch((e) =>
+        logger.error('[WhatsAppService] Erro no retorno de remarketing:', e)
+      )
+
       logger.info(`[WhatsAppService] Mensagem recebida de ${message.from} salva no banco`)
     } catch (err) {
       logger.error('[WhatsAppService] Erro ao processar mensagem recebida:', err)
     }
   })
+}
+
+/**
+ * Quando um contato que recebeu um disparo de remarketing responde:
+ *  - marca o recipient como "replied"
+ *  - devolve o lead para a fila da roleta (redistribui para um agente ativo)
+ */
+async function handleRemarketingReply(contactId: string, phone: string): Promise<void> {
+  // Procura recipients enviados nas últimas 72h ainda não respondidos
+  const cutoff = new Date()
+  cutoff.setHours(cutoff.getHours() - 72)
+
+  const recipient = await prisma.bulkMessageRecipient.findFirst({
+    where: {
+      contactId,
+      status: 'sent',
+      sentAt: { gte: cutoff },
+    },
+    orderBy: { sentAt: 'desc' },
+  })
+
+  if (!recipient) return
+
+  // Marca como respondido
+  await prisma.bulkMessageRecipient.update({
+    where: { id: recipient.id },
+    data: { status: 'replied', repliedAt: new Date() },
+  })
+
+  logger.info(`[Remarketing] Contato ${phone} respondeu ao disparo — devolvendo à roleta`)
+
+  // Devolve à roleta (distribui para um agente ativo)
+  try {
+    const { RouletteService } = await import('./roulette.service')
+    await RouletteService.distribute({
+      contactId,
+      source: 'remarketing-reply',
+      notes: 'Cliente respondeu a disparo de remarketing',
+    })
+  } catch (e: any) {
+    // Sem agente ativo — apenas loga, não quebra o fluxo
+    logger.warn(`[Remarketing] Não foi possível redistribuir: ${e.message}`)
+  }
 }
 
 function setupStatusListener(): void {

@@ -122,11 +122,10 @@ export class RouletteController {
     res.json({ success: true, message: 'Time removido' })
   }
 
-  /** PATCH /api/roulette/agents/:userId/team — atribui agente a um time */
-  static async assignTeam(req: AuthRequest, res: Response): Promise<void> {
-    const { userId } = req.params
-    const { teamId } = req.body  // null = sem time
-    await RouletteService.assignAgentToTeam(userId, teamId ?? null)
-    res.json({ success: true, message: 'Time atribuído' })
+  /** PATCH /api/roulette/agents/:userId/teams/:teamId — toggle time do agente */
+  static async toggleAgentTeam(req: AuthRequest, res: Response): Promise<void> {
+    const { userId, teamId } = req.params
+    const result = await RouletteService.toggleAgentTeam(userId, teamId)
+    res.json({ success: true, data: result, message: result.added ? 'Time adicionado' : 'Time removido' })
   }
 }
