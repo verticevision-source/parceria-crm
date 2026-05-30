@@ -74,6 +74,9 @@ model User {
   rouletteLogs     RouletteLog[]
   crmBoardMembers  CRMBoardMember[]
   bulkMessages     BulkMessage[]
+  internalGroups   InternalGroupMember[]
+  internalMessages InternalMessage[]
+  aiEnabled        Boolean  @default(false)  // admin libera assistente de IA p/ este usuário
 
   @@map("users")
 }
@@ -476,4 +479,47 @@ model CustomFieldValue {
 
   @@unique([customFieldId, entityId])
   @@map("custom_field_values")
+}
+
+// ── Chat Interno da Equipe ────────────────────────────────────────────────────
+
+model InternalGroup {
+  id          String   @id @default(uuid())
+  name        String   // "Vendedores", "Gerentes de Conta"
+  description String?
+  color       String   @default("#6366f1")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  InternalGroupMember[]
+  messages InternalMessage[]
+
+  @@map("internal_groups")
+}
+
+model InternalGroupMember {
+  id       String   @id @default(uuid())
+  groupId  String
+  userId   String
+  lastReadAt DateTime?
+
+  group InternalGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("internal_group_members")
+}
+
+model InternalMessage {
+  id        String   @id @default(uuid())
+  groupId   String
+  userId    String
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  group InternalGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("internal_messages")
 }

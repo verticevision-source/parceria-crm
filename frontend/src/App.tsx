@@ -13,6 +13,7 @@ import Roulette from './pages/Roulette'
 import CRMBoards from './pages/CRMBoards'
 import BulkMessage from './pages/BulkMessage'
 import Reports from './pages/Reports'
+import InternalChat from './pages/InternalChat'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -56,6 +57,7 @@ export default function App() {
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/whatsapp" element={<WhatsAppConfig />} />
         <Route path="/roulette" element={<Roulette />} />
+        <Route path="/team-chat" element={<InternalChat />} />
         <Route path="/crm-boards" element={<CRMBoards />} />
         <Route path="/settings" element={<Settings />} />
 

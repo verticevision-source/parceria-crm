@@ -4,6 +4,7 @@ import { Server as SocketServer } from 'socket.io'
 import app from './app'
 import { setSocketIO } from './services/whatsapp.service'
 import { setRouletteSocketIO } from './services/roulette.service'
+import { setInternalChatIO } from './services/internalChat.service'
 import { logger } from './utils/logger'
 
 const PORT = process.env.PORT || 3001
@@ -38,6 +39,7 @@ io.on('connection', (socket) => {
 
 setSocketIO(io)
 setRouletteSocketIO(io)
+setInternalChatIO(io)
 
 httpServer.listen(PORT, () => {
   logger.info(`🚀 Servidor rodando na porta ${PORT}`)

@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
-  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3
+  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../Logo'
@@ -12,6 +12,7 @@ const navItems = [
   { to: '/crm',        icon: Briefcase,       label: 'CRM' },
   { to: '/contacts',   icon: UserCircle,      label: 'Contatos' },
   { to: '/roulette',   icon: Shuffle,         label: 'Roleta' },
+  { to: '/team-chat',  icon: MessagesSquare,  label: 'Chat Interno' },
 ]
 
 const adminItems = [

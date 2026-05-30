@@ -14,6 +14,7 @@ import rouletteRoutes from './roulette.routes'
 import crmBoardRoutes from './crmBoard.routes'
 import bulkMessageRoutes from './bulkMessage.routes'
 import reportRoutes from './report.routes'
+import internalChatRoutes from './internalChat.routes'
 
 const router = Router()
 
@@ -32,5 +33,6 @@ router.use('/roulette', rouletteRoutes)
 router.use('/crm-boards', crmBoardRoutes)
 router.use('/bulk-messages', bulkMessageRoutes)
 router.use('/reports', reportRoutes)
+router.use('/internal-chat', internalChatRoutes)
 
 export default router
