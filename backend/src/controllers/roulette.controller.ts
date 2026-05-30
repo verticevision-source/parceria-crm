@@ -93,4 +93,40 @@ export class RouletteController {
     await RouletteService.deleteCampaign(req.params.id)
     res.json({ success: true, message: 'Campanha removida' })
   }
+
+  // ── Times ─────────────────────────────────────────────────────────────────
+
+  /** GET /api/roulette/teams */
+  static async listTeams(_req: AuthRequest, res: Response): Promise<void> {
+    const data = await RouletteService.listTeams()
+    res.json({ success: true, data })
+  }
+
+  /** POST /api/roulette/teams */
+  static async createTeam(req: AuthRequest, res: Response): Promise<void> {
+    const { name, description, color } = req.body
+    if (!name) { res.status(400).json({ success: false, message: 'name é obrigatório' }); return }
+    const team = await RouletteService.createTeam({ name, description, color })
+    res.status(201).json({ success: true, data: team })
+  }
+
+  /** PUT /api/roulette/teams/:id */
+  static async updateTeam(req: AuthRequest, res: Response): Promise<void> {
+    const team = await RouletteService.updateTeam(req.params.id, req.body)
+    res.json({ success: true, data: team })
+  }
+
+  /** DELETE /api/roulette/teams/:id */
+  static async deleteTeam(req: AuthRequest, res: Response): Promise<void> {
+    await RouletteService.deleteTeam(req.params.id)
+    res.json({ success: true, message: 'Time removido' })
+  }
+
+  /** PATCH /api/roulette/agents/:userId/team — atribui agente a um time */
+  static async assignTeam(req: AuthRequest, res: Response): Promise<void> {
+    const { userId } = req.params
+    const { teamId } = req.body  // null = sem time
+    await RouletteService.assignAgentToTeam(userId, teamId ?? null)
+    res.json({ success: true, message: 'Time atribuído' })
+  }
 }

@@ -76,7 +76,7 @@ export class RouletteService {
         id: true,
         name: true,
         email: true,
-        rouletteAgent: true,
+        rouletteAgent: { include: { team: true } },
       },
       orderBy: { name: 'asc' },
     })
@@ -90,7 +90,46 @@ export class RouletteService {
       leadsToday: u.rouletteAgent?.leadsToday ?? 0,
       leadsTotal: u.rouletteAgent?.leadsTotal ?? 0,
       lastLeadAt: u.rouletteAgent?.lastLeadAt ?? null,
+      teamId: u.rouletteAgent?.teamId ?? null,
+      teamName: u.rouletteAgent?.team?.name ?? null,
+      teamColor: u.rouletteAgent?.team?.color ?? null,
     }))
+  }
+
+  // ── Times ─────────────────────────────────────────────────────────────────
+
+  static async listTeams() {
+    return prisma.rouletteTeam.findMany({
+      orderBy: { name: 'asc' },
+      include: {
+        _count: { select: { agents: true, campaigns: true } },
+      },
+    })
+  }
+
+  static async createTeam(data: { name: string; description?: string; color?: string }) {
+    return prisma.rouletteTeam.create({ data })
+  }
+
+  static async updateTeam(id: string, data: { name?: string; description?: string; color?: string; isActive?: boolean }) {
+    return prisma.rouletteTeam.update({ where: { id }, data })
+  }
+
+  static async deleteTeam(id: string) {
+    // Remove vínculo dos agentes antes de deletar
+    await prisma.rouletteAgent.updateMany({ where: { teamId: id }, data: { teamId: null } })
+    await prisma.campaign.updateMany({ where: { teamId: id }, data: { teamId: null } })
+    return prisma.rouletteTeam.delete({ where: { id } })
+  }
+
+  /** Atribui agente a um time (null = sem time / pool global) */
+  static async assignAgentToTeam(userId: string, teamId: string | null) {
+    await prisma.rouletteAgent.upsert({
+      where: { userId },
+      create: { userId, teamId, isActive: false },
+      update: { teamId },
+    })
+    if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
   }
 
   // ── Distribui um lead para o próximo agente ativo ─────────────────────────
@@ -102,18 +141,32 @@ export class RouletteService {
     notes?: string
     pipelineStageId?: string
   }): Promise<{ lead: any; assignedUser: any }> {
-    // Busca agentes ativos ordenados por último lead recebido (menos recente primeiro)
+
+    // Se tem campanha, descobre o time dela para filtrar agentes
+    let teamId: string | null = null
+    if (input.campaignId) {
+      const campaign = await prisma.campaign.findUnique({ where: { id: input.campaignId } })
+      teamId = campaign?.teamId ?? null
+    }
+
+    // Filtra por time se a campanha tiver um, senão usa pool global
+    const whereAgents: any = { isActive: true }
+    if (teamId) {
+      whereAgents.teamId = teamId
+    }
+
     const activeAgents = await prisma.rouletteAgent.findMany({
-      where: { isActive: true },
+      where: whereAgents,
       include: { user: { select: { id: true, name: true, email: true } } },
       orderBy: [
-        { lastLeadAt: 'asc' },   // quem esperou mais tempo primeiro
-        { leadsToday: 'asc' },   // desempate: quem recebeu menos hoje
+        { lastLeadAt: 'asc' },
+        { leadsToday: 'asc' },
       ],
     })
 
     if (activeAgents.length === 0) {
-      throw new Error('Nenhum agente ativo na roleta no momento')
+      const teamMsg = teamId ? ` no time selecionado` : ''
+      throw new Error(`Nenhum agente ativo na roleta${teamMsg} no momento`)
     }
 
     // Aplica peso: expande lista conforme peso de cada agente

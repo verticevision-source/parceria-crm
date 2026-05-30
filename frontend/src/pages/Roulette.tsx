@@ -4,8 +4,17 @@ import { api } from '../services/api'
 import toast from 'react-hot-toast'
 import {
   Shuffle, Users, TrendingUp, Plus, Trash2, ToggleLeft,
-  ToggleRight, Award, Clock, BarChart2, Target, RefreshCw
+  ToggleRight, Award, Clock, BarChart2, Target, RefreshCw, MapPin, Edit2
 } from 'lucide-react'
+
+interface Team {
+  id: string
+  name: string
+  description?: string
+  color: string
+  isActive: boolean
+  _count: { agents: number; campaigns: number }
+}
 
 interface AgentStatus {
   userId: string
@@ -16,6 +25,9 @@ interface AgentStatus {
   leadsToday: number
   leadsTotal: number
   lastLeadAt: string | null
+  teamId: string | null
+  teamName: string | null
+  teamColor: string | null
 }
 
 interface Campaign {
@@ -23,6 +35,7 @@ interface Campaign {
   name: string
   description?: string
   source?: string
+  teamId?: string | null
   isActive: boolean
   leadsCount: number
   createdAt: string
@@ -43,13 +56,19 @@ export default function Roulette() {
   const [myStatus, setMyStatus] = useState<{ isActive: boolean; leadsToday: number; leadsTotal: number } | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
+  const [teams, setTeams] = useState<Team[]>([])
   const [logs, setLogs] = useState<RouletteLog[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
+  const [activeTab, setActiveTab] = useState<'agents' | 'campaigns' | 'teams'>('agents')
 
   // Modal nova campanha
   const [showNewCampaign, setShowNewCampaign] = useState(false)
-  const [newCampaign, setNewCampaign] = useState({ name: '', description: '', source: '' })
+  const [newCampaign, setNewCampaign] = useState({ name: '', description: '', source: '', teamId: '' })
+
+  // Modal novo time
+  const [showNewTeam, setShowNewTeam] = useState(false)
+  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1' })
 
   // Modal distribuir lead manual
   const [showDistribute, setShowDistribute] = useState(false)
@@ -71,12 +90,14 @@ export default function Roulette() {
       setCampaigns(campaignsRes.data.data)
 
       if (isAdmin) {
-        const [agentsRes, logsRes] = await Promise.all([
+        const [agentsRes, logsRes, teamsRes] = await Promise.all([
           api.get('/roulette/status'),
           api.get('/roulette/logs'),
+          api.get('/roulette/teams'),
         ])
         setAgents(agentsRes.data.data)
         setLogs(logsRes.data.data)
+        setTeams(teamsRes.data.data)
       }
     } catch {
       // silencioso no refresh automático
@@ -113,13 +134,47 @@ export default function Roulette() {
   async function handleCreateCampaign() {
     if (!newCampaign.name.trim()) { toast.error('Nome obrigatório'); return }
     try {
-      await api.post('/roulette/campaigns', newCampaign)
+      await api.post('/roulette/campaigns', { ...newCampaign, teamId: newCampaign.teamId || null })
       toast.success('Campanha criada!')
       setShowNewCampaign(false)
-      setNewCampaign({ name: '', description: '', source: '' })
+      setNewCampaign({ name: '', description: '', source: '', teamId: '' })
       loadData()
     } catch {
       toast.error('Erro ao criar campanha')
+    }
+  }
+
+  async function handleCreateTeam() {
+    if (!newTeam.name.trim()) { toast.error('Nome obrigatório'); return }
+    try {
+      await api.post('/roulette/teams', newTeam)
+      toast.success('Time criado!')
+      setShowNewTeam(false)
+      setNewTeam({ name: '', description: '', color: '#6366f1' })
+      loadData()
+    } catch {
+      toast.error('Erro ao criar time')
+    }
+  }
+
+  async function handleDeleteTeam(id: string) {
+    if (!confirm('Deletar time? Os agentes ficarão sem time.')) return
+    try {
+      await api.delete(`/roulette/teams/${id}`)
+      toast.success('Time removido')
+      loadData()
+    } catch {
+      toast.error('Erro ao deletar time')
+    }
+  }
+
+  async function handleAssignTeam(userId: string, teamId: string) {
+    try {
+      await api.patch(`/roulette/agents/${userId}/team`, { teamId: teamId || null })
+      toast.success('Time atribuído!')
+      loadData()
+    } catch {
+      toast.error('Erro ao atribuir time')
     }
   }
 
@@ -270,20 +325,33 @@ export default function Roulette() {
             </div>
           </div>
 
-          {/* Agentes */}
+          {/* Tabs */}
+          <div className="flex gap-1 bg-bg-secondary p-1 rounded-xl">
+            {(['agents', 'campaigns', 'teams'] as const).map(tab => (
+              <button
+                key={tab}
+                onClick={() => setActiveTab(tab)}
+                className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${
+                  activeTab === tab ? 'bg-card shadow text-text-primary' : 'text-text-muted hover:text-text-primary'
+                }`}
+              >
+                {tab === 'agents' ? `👥 Agentes (${agents.length})` : tab === 'campaigns' ? `📣 Campanhas (${campaigns.length})` : `🗺️ Times (${teams.length})`}
+              </button>
+            ))}
+          </div>
+
+          {/* ── Aba Agentes ── */}
+          {activeTab === 'agents' && (
           <div className="card">
             <div className="flex items-center justify-between p-4 border-b border-border">
               <h3 className="font-semibold text-text-primary flex items-center gap-2">
-                <Users size={16} /> Agentes ({agents.length})
+                <Users size={16} /> Agentes
               </h3>
               <div className="flex gap-2">
                 <button onClick={handleResetDaily} className="btn-ghost text-xs px-3 py-1 rounded-lg flex items-center gap-1">
                   <RefreshCw size={12} /> Reset Diário
                 </button>
-                <button
-                  onClick={() => setShowDistribute(true)}
-                  className="btn-primary text-xs px-3 py-1 rounded-lg flex items-center gap-1"
-                >
+                <button onClick={() => setShowDistribute(true)} className="btn-primary text-xs px-3 py-1 rounded-lg flex items-center gap-1">
                   <Shuffle size={12} /> Distribuir Lead
                 </button>
               </div>
@@ -295,20 +363,35 @@ export default function Roulette() {
               ) : agents.map((agent) => (
                 <div key={agent.userId} className="flex items-center justify-between p-4">
                   <div className="flex items-center gap-3">
-                    <div className={`w-3 h-3 rounded-full ${agent.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <div className={`w-3 h-3 rounded-full flex-shrink-0 ${agent.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
                     <div>
                       <p className="font-medium text-text-primary text-sm">{agent.name}</p>
-                      <p className="text-xs text-text-muted">{agent.email}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {agent.teamName ? (
+                          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full text-white font-medium"
+                            style={{ backgroundColor: agent.teamColor || '#6366f1' }}>
+                            <MapPin size={10} />{agent.teamName}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-text-muted">Sem time</span>
+                        )}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
+                    {/* Atribuir time */}
+                    <select
+                      value={agent.teamId || ''}
+                      onChange={(e) => handleAssignTeam(agent.userId, e.target.value)}
+                      className="text-xs border border-border rounded px-1.5 py-0.5 bg-background max-w-[120px]"
+                      title="Time"
+                    >
+                      <option value="">Sem time</option>
+                      {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                    </select>
                     <div className="text-center">
                       <p className="text-sm font-semibold text-primary">{agent.leadsToday}</p>
                       <p className="text-xs text-text-muted">hoje</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-semibold">{agent.leadsTotal}</p>
-                      <p className="text-xs text-text-muted">total</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <Award size={14} className="text-yellow-500" />
@@ -317,76 +400,105 @@ export default function Roulette() {
                         onChange={(e) => handleSetWeight(agent.userId, Number(e.target.value))}
                         className="text-xs border border-border rounded px-1 py-0.5 bg-background"
                       >
-                        {[1,2,3,4,5,6,7,8,9,10].map(w => (
-                          <option key={w} value={w}>{w}x</option>
-                        ))}
+                        {[1,2,3,4,5,6,7,8,9,10].map(w => <option key={w} value={w}>{w}x</option>)}
                       </select>
                     </div>
-                    {agent.lastLeadAt && (
-                      <div className="flex items-center gap-1 text-xs text-text-muted">
-                        <Clock size={12} />
-                        {new Date(agent.lastLeadAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-                      </div>
-                    )}
                   </div>
                 </div>
               ))}
             </div>
           </div>
+          )}
+
+          {/* ── Aba Times ── */}
+          {activeTab === 'teams' && (
+          <div className="card">
+            <div className="flex items-center justify-between p-4 border-b border-border">
+              <h3 className="font-semibold text-text-primary flex items-center gap-2">
+                <MapPin size={16} /> Times Regionais
+              </h3>
+              <button onClick={() => setShowNewTeam(true)} className="btn-primary text-xs px-3 py-1 rounded-lg flex items-center gap-1">
+                <Plus size={12} /> Novo Time
+              </button>
+            </div>
+            <div className="divide-y divide-border">
+              {teams.length === 0 ? (
+                <p className="p-4 text-sm text-text-muted text-center">Nenhum time criado ainda</p>
+              ) : teams.map(team => (
+                <div key={team.id} className="flex items-center justify-between p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
+                    <div>
+                      <p className="font-medium text-text-primary text-sm">{team.name}</p>
+                      <p className="text-xs text-text-muted">
+                        {team._count.agents} agente{team._count.agents !== 1 ? 's' : ''} · {team._count.campaigns} campanha{team._count.campaigns !== 1 ? 's' : ''}
+                        {team.description && ` · ${team.description}`}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => handleDeleteTeam(team.id)} className="text-red-400 hover:text-red-600 p-1">
+                    <Trash2 size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+          )}
         </>
       )}
 
-      {/* ── Campanhas ──────────────────────────────────────────────────────── */}
+      {/* ── Aba Campanhas (apenas se não admin ou dentro das tabs) ── */}
+      {(!isAdmin || activeTab === 'campaigns') && (
       <div className="card">
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h3 className="font-semibold text-text-primary flex items-center gap-2">
             <Target size={16} /> Campanhas
           </h3>
           {isAdmin && (
-            <button
-              onClick={() => setShowNewCampaign(true)}
-              className="btn-primary text-xs px-3 py-1 rounded-lg flex items-center gap-1"
-            >
+            <button onClick={() => setShowNewCampaign(true)} className="btn-primary text-xs px-3 py-1 rounded-lg flex items-center gap-1">
               <Plus size={12} /> Nova Campanha
             </button>
           )}
         </div>
-
         <div className="divide-y divide-border">
           {campaigns.length === 0 ? (
             <p className="p-4 text-sm text-text-muted text-center">Nenhuma campanha criada ainda</p>
-          ) : campaigns.map((camp) => (
-            <div key={camp.id} className="flex items-center justify-between p-4">
-              <div className="flex items-center gap-3">
-                <div className={`w-2 h-2 rounded-full ${camp.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <div>
-                  <p className="font-medium text-text-primary text-sm">{camp.name}</p>
-                  <p className="text-xs text-text-muted">
-                    {camp.source && <span className="mr-2 capitalize">📍 {camp.source}</span>}
-                    {camp.leadsCount} leads
-                  </p>
+          ) : campaigns.map((camp) => {
+            const team = teams.find(t => t.id === camp.teamId)
+            return (
+              <div key={camp.id} className="flex items-center justify-between p-4">
+                <div className="flex items-center gap-3">
+                  <div className={`w-2 h-2 rounded-full ${camp.isActive ? 'bg-green-500' : 'bg-gray-300'}`} />
+                  <div>
+                    <p className="font-medium text-text-primary text-sm">{camp.name}</p>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {camp.source && <span className="text-xs text-text-muted capitalize">📍 {camp.source}</span>}
+                      {team && (
+                        <span className="text-xs px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: team.color }}>
+                          {team.name}
+                        </span>
+                      )}
+                      <span className="text-xs text-text-muted">{camp.leadsCount} leads</span>
+                    </div>
+                  </div>
                 </div>
+                {isAdmin && (
+                  <div className="flex gap-2">
+                    <button onClick={() => handleToggleCampaign(camp.id)}
+                      className={`text-xs px-2 py-1 rounded ${camp.isActive ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}>
+                      {camp.isActive ? 'Ativa' : 'Inativa'}
+                    </button>
+                    <button onClick={() => handleDeleteCampaign(camp.id)} className="text-red-400 hover:text-red-600 p-1">
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                )}
               </div>
-              {isAdmin && (
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => handleToggleCampaign(camp.id)}
-                    className={`text-xs px-2 py-1 rounded ${camp.isActive ? 'text-green-600 hover:bg-green-50' : 'text-gray-500 hover:bg-gray-50'}`}
-                  >
-                    {camp.isActive ? 'Ativa' : 'Inativa'}
-                  </button>
-                  <button
-                    onClick={() => handleDeleteCampaign(camp.id)}
-                    className="text-red-400 hover:text-red-600 p-1"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              )}
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
+      )}
 
       {/* ── Histórico (admin) ───────────────────────────────────────────────── */}
       {isAdmin && logs.length > 0 && (
@@ -452,9 +564,23 @@ export default function Roulette() {
                 </select>
               </div>
               <div>
+                <label className="text-sm text-text-muted">Time Regional</label>
+                <select
+                  className="input w-full mt-1"
+                  value={newCampaign.teamId}
+                  onChange={e => setNewCampaign(p => ({ ...p, teamId: e.target.value }))}
+                >
+                  <option value="">Sem time (pool global)</option>
+                  {teams.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+                </select>
+                {teams.length === 0 && (
+                  <p className="text-xs text-text-muted mt-1">💡 Crie times na aba "Times" primeiro</p>
+                )}
+              </div>
+              <div>
                 <label className="text-sm text-text-muted">Descrição</label>
                 <textarea
-                  className="input w-full mt-1 h-20 resize-none"
+                  className="input w-full mt-1 h-16 resize-none"
                   placeholder="Descrição opcional..."
                   value={newCampaign.description}
                   onChange={e => setNewCampaign(p => ({ ...p, description: e.target.value }))}
@@ -464,6 +590,48 @@ export default function Roulette() {
             <div className="flex gap-2 mt-4">
               <button className="btn-primary flex-1" onClick={handleCreateCampaign}>Criar Campanha</button>
               <button className="btn-ghost flex-1" onClick={() => setShowNewCampaign(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal Novo Time ────────────────────────────────────────────────── */}
+      {showNewTeam && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-card rounded-2xl p-6 w-full max-w-md shadow-xl">
+            <h3 className="font-bold text-text-primary mb-4 flex items-center gap-2">
+              <MapPin size={16} /> Novo Time Regional
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-text-muted">Nome *</label>
+                <input className="input w-full mt-1" placeholder="Ex: Sorocaba, Rio Preto..."
+                  value={newTeam.name} onChange={e => setNewTeam(p => ({ ...p, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Descrição</label>
+                <input className="input w-full mt-1" placeholder="Opcional..."
+                  value={newTeam.description} onChange={e => setNewTeam(p => ({ ...p, description: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Cor</label>
+                <div className="flex items-center gap-3 mt-1">
+                  <input type="color" value={newTeam.color}
+                    onChange={e => setNewTeam(p => ({ ...p, color: e.target.value }))}
+                    className="w-10 h-10 rounded cursor-pointer border border-border" />
+                  <div className="flex gap-2">
+                    {['#6366f1','#22c55e','#f59e0b','#ef4444','#3b82f6','#8b5cf6','#ec4899'].map(c => (
+                      <button key={c} onClick={() => setNewTeam(p => ({ ...p, color: c }))}
+                        className="w-6 h-6 rounded-full border-2 transition-all"
+                        style={{ backgroundColor: c, borderColor: newTeam.color === c ? '#fff' : 'transparent' }} />
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button className="btn-primary flex-1" onClick={handleCreateTeam}>Criar Time</button>
+              <button className="btn-ghost flex-1" onClick={() => setShowNewTeam(false)}>Cancelar</button>
             </div>
           </div>
         </div>

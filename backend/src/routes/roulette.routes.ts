@@ -18,9 +18,16 @@ router.get('/logs',        authMiddleware, adminMiddleware, asyncHandler(Roulett
 router.post('/reset-daily', authMiddleware, adminMiddleware, asyncHandler(RouletteController.resetDaily))
 
 // ── Campanhas ──────────────────────────────────────────────────────────────
-router.get('/campaigns',           authMiddleware, asyncHandler(RouletteController.listCampaigns))
-router.post('/campaigns',          authMiddleware, adminMiddleware, asyncHandler(RouletteController.createCampaign))
+router.get('/campaigns',              authMiddleware, asyncHandler(RouletteController.listCampaigns))
+router.post('/campaigns',             authMiddleware, adminMiddleware, asyncHandler(RouletteController.createCampaign))
 router.patch('/campaigns/:id/toggle', authMiddleware, adminMiddleware, asyncHandler(RouletteController.toggleCampaign))
-router.delete('/campaigns/:id',    authMiddleware, adminMiddleware, asyncHandler(RouletteController.deleteCampaign))
+router.delete('/campaigns/:id',       authMiddleware, adminMiddleware, asyncHandler(RouletteController.deleteCampaign))
+
+// ── Times regionais ────────────────────────────────────────────────────────
+router.get('/teams',             authMiddleware, asyncHandler(RouletteController.listTeams))
+router.post('/teams',            authMiddleware, adminMiddleware, asyncHandler(RouletteController.createTeam))
+router.put('/teams/:id',         authMiddleware, adminMiddleware, asyncHandler(RouletteController.updateTeam))
+router.delete('/teams/:id',      authMiddleware, adminMiddleware, asyncHandler(RouletteController.deleteTeam))
+router.patch('/agents/:userId/team', authMiddleware, adminMiddleware, asyncHandler(RouletteController.assignTeam))
 
 export default router
