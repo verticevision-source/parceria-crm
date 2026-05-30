@@ -2,9 +2,10 @@ import { IWhatsAppProvider } from './IWhatsAppProvider'
 import { MockWhatsAppProvider } from './MockWhatsAppProvider'
 import { EvolutionWhatsAppProvider } from './EvolutionWhatsAppProvider'
 import { WahaWhatsAppProvider } from './WahaWhatsAppProvider'
+import { WhatsAppCloudProvider } from './WhatsAppCloudProvider'
 import { logger } from '../../utils/logger'
 
-type ProviderType = 'mock' | 'evolution' | 'waha' | 'baileys'
+type ProviderType = 'mock' | 'evolution' | 'waha' | 'baileys' | 'cloud'
 
 let instance: IWhatsAppProvider | null = null
 
@@ -21,6 +22,9 @@ export function getWhatsAppProvider(): IWhatsAppProvider {
       break
     case 'waha':
       instance = new WahaWhatsAppProvider()
+      break
+    case 'cloud':
+      instance = new WhatsAppCloudProvider()
       break
     case 'mock':
       instance = new MockWhatsAppProvider()

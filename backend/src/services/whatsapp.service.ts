@@ -21,8 +21,17 @@ async function resolveDbSession(sessionId: string) {
       include: { user: true },
     })
   }
-  return prisma.whatsAppSession.findUnique({
+  // Cloud API: a Meta envia o phoneNumberId como sessionId — busca pela sessão cloud ativa
+  const byId = await prisma.whatsAppSession.findUnique({
     where: { id: sessionId },
+    include: { user: true },
+  })
+  if (byId) return byId
+
+  // Fallback: busca sessão cloud ativa
+  return prisma.whatsAppSession.findFirst({
+    where: { provider: 'cloud', status: 'CONNECTED' },
+    orderBy: { createdAt: 'desc' },
     include: { user: true },
   })
 }
@@ -177,11 +186,14 @@ export class WhatsAppService {
       }
     }
 
+    const providerName = process.env.WHATSAPP_PROVIDER || 'mock'
+
     const session = await prisma.whatsAppSession.create({
       data: {
         userId,
-        status: 'WAITING_QR',
-        provider: process.env.WHATSAPP_PROVIDER || 'mock',
+        // Cloud API conecta direto sem QR
+        status: providerName === 'cloud' ? 'CONNECTED' : 'WAITING_QR',
+        provider: providerName,
       },
     })
 
@@ -190,7 +202,12 @@ export class WhatsAppService {
 
     await prisma.whatsAppSession.update({
       where: { id: session.id },
-      data: { status: connectionStatus.status, qrCode: connectionStatus.qrCode },
+      data: {
+        status: connectionStatus.status,
+        qrCode: connectionStatus.qrCode || null,
+        phoneNumber: connectionStatus.phoneNumber || null,
+        connectedAt: connectionStatus.status === 'CONNECTED' ? new Date() : null,
+      },
     })
 
     return { session, status: connectionStatus }
