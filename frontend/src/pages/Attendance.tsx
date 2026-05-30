@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle
 } from 'lucide-react'
-import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, api } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
@@ -120,6 +120,10 @@ export default function Attendance() {
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
 
+  // Roleta
+  const [rouletteActive, setRouletteActive] = useState(false)
+  const [rouletteToggling, setRouletteToggling] = useState(false)
+
   // Chat extras
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showQuickReplies, setShowQuickReplies] = useState(false)
@@ -160,6 +164,27 @@ export default function Attendance() {
   }, [])
 
   useEffect(() => { loadQuickReplies() }, [loadQuickReplies])
+
+  // Carrega status da roleta ao entrar na página
+  useEffect(() => {
+    api.get('/roulette/my-status')
+      .then(res => setRouletteActive(res.data.data?.isActive ?? false))
+      .catch(() => {})
+  }, [])
+
+  async function handleRouletteToggle() {
+    setRouletteToggling(true)
+    try {
+      const res = await api.patch('/roulette/toggle')
+      const isActive: boolean = res.data.data.isActive
+      setRouletteActive(isActive)
+      toast.success(isActive ? '🟢 Você está na roleta!' : '🔴 Você saiu da roleta')
+    } catch {
+      toast.error('Erro ao alterar status da roleta')
+    } finally {
+      setRouletteToggling(false)
+    }
+  }
 
   const loadConversations = useCallback(async () => {
     try {
@@ -425,7 +450,22 @@ export default function Attendance() {
       {/* ── Sidebar de conversas ── */}
       <div className="w-80 bg-bg-secondary border-r border-border flex flex-col flex-shrink-0">
         <div className="p-4 border-b border-border">
-          <h2 className="text-text-primary font-semibold mb-3">Atendimento</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-text-primary font-semibold">Atendimento</h2>
+            <button
+              onClick={handleRouletteToggle}
+              disabled={rouletteToggling}
+              title={rouletteActive ? 'Sair da roleta de leads' : 'Entrar na roleta de leads'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                rouletteActive
+                  ? 'bg-green-500 hover:bg-green-600 text-white'
+                  : 'bg-bg-tertiary hover:bg-bg-secondary text-text-muted hover:text-text-primary border border-border'
+              }`}
+            >
+              <Shuffle size={12} className={rouletteToggling ? 'animate-spin' : ''} />
+              {rouletteActive ? 'Na Roleta' : 'Fora da Roleta'}
+            </button>
+          </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
             <input
