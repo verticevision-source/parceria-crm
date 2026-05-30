@@ -15,6 +15,7 @@ router.put('/:id', asyncHandler(LeadController.update))
 router.delete('/:id', asyncHandler(LeadController.delete))
 router.patch('/:id/stage', asyncHandler(LeadController.updateStage))
 router.patch('/:id/status', asyncHandler(LeadController.updateStatus))
+router.get('/:id/messages', asyncHandler(LeadController.getMessages))
 router.get('/:id/notes', asyncHandler(LeadController.getNotes))
 router.post('/:id/notes', asyncHandler(LeadController.addNote))
 

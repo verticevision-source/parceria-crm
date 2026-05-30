@@ -194,6 +194,40 @@ export class LeadService {
     return lead
   }
 
+  /** Mensagens da conversa do contato vinculado ao lead (para o chat do CRM) */
+  static async getLeadMessages(id: string, userId: string, role: string) {
+    const lead = await prisma.lead.findUnique({
+      where: { id },
+      include: { contact: { select: { id: true, name: true, phone: true } } },
+    })
+    if (!lead) throw new Error('Lead não encontrado')
+    if (role !== 'ADMIN' && lead.responsibleUserId !== userId) throw new Error('Acesso negado')
+    if (!lead.contactId) return { contact: lead.contact, conversationId: null, messages: [] }
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { contactId: lead.contactId },
+      orderBy: { lastMessageAt: 'desc' },
+    })
+
+    const messages = conversation
+      ? await prisma.message.findMany({
+          where: { conversationId: conversation.id },
+          orderBy: { createdAt: 'asc' },
+          take: 100,
+        })
+      : []
+
+    // Marca como lida ao abrir
+    if (conversation && conversation.unreadCount > 0) {
+      await prisma.conversation.update({
+        where: { id: conversation.id },
+        data: { unreadCount: 0 },
+      })
+    }
+
+    return { contact: lead.contact, conversationId: conversation?.id || null, messages }
+  }
+
   static async getNotes(leadId: string, userId: string, role: string) {
     const lead = await prisma.lead.findUnique({ where: { id: leadId } })
     if (!lead) throw new Error('Lead não encontrado')

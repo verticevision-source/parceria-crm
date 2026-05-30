@@ -108,6 +108,11 @@ export class LeadController {
     res.status(201).json({ success: true, data: lead })
   }
 
+  static async getMessages(req: AuthRequest, res: Response): Promise<void> {
+    const data = await LeadService.getLeadMessages(req.params.id, req.user!.userId, req.user!.role)
+    res.json({ success: true, data })
+  }
+
   static async getNotes(req: AuthRequest, res: Response): Promise<void> {
     const notes = await LeadService.getNotes(req.params.id, req.user!.userId, req.user!.role)
     res.json({ success: true, data: notes })

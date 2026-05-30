@@ -369,9 +369,17 @@ export class WhatsAppService {
   }
 
   static async sendMessage(userId: string, to: string, body: string) {
-    const session = await prisma.whatsAppSession.findFirst({
+    // Prefere a sessão do próprio usuário; se não tiver, usa qualquer número
+    // conectado (modelo de número compartilhado da Cloud API oficial)
+    let session = await prisma.whatsAppSession.findFirst({
       where: { userId, status: 'CONNECTED' },
     })
+    if (!session) {
+      session = await prisma.whatsAppSession.findFirst({
+        where: { status: 'CONNECTED' },
+        orderBy: { createdAt: 'desc' },
+      })
+    }
 
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 

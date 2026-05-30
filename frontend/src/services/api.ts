@@ -102,6 +102,7 @@ export const leadsApi = {
   updateStatus: (id: string, status: string) =>
     api.patch(`/leads/${id}/status`, { status }),
   createFromConversation: (data: object) => api.post('/leads/from-conversation', data),
+  getMessages: (id: string) => api.get(`/leads/${id}/messages`),
   getNotes: (id: string) => api.get(`/leads/${id}/notes`),
   addNote: (id: string, content: string) => api.post(`/leads/${id}/notes`, { content }),
 }

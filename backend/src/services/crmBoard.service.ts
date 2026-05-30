@@ -146,6 +146,36 @@ export class CRMBoardService {
       },
     })
 
+    // Enriquece cada lead com não-lidas / última mensagem da conversa do contato
+    const contactIds = stages.flatMap((s) => s.leads.map((l) => l.contactId).filter(Boolean)) as string[]
+    if (contactIds.length > 0) {
+      const conversations = await prisma.conversation.findMany({
+        where: { contactId: { in: contactIds } },
+        select: { contactId: true, unreadCount: true, lastMessage: true, lastMessageAt: true },
+        orderBy: { lastMessageAt: 'desc' },
+      })
+      // Agrupa por contato (soma não-lidas, pega a última msg)
+      const byContact = new Map<string, { unread: number; lastMessage: string | null; lastMessageAt: Date | null }>()
+      for (const c of conversations) {
+        if (!c.contactId) continue
+        const cur = byContact.get(c.contactId) || { unread: 0, lastMessage: null, lastMessageAt: null }
+        cur.unread += c.unreadCount
+        if (!cur.lastMessageAt && c.lastMessageAt) {
+          cur.lastMessage = c.lastMessage
+          cur.lastMessageAt = c.lastMessageAt
+        }
+        byContact.set(c.contactId, cur)
+      }
+      for (const s of stages) {
+        for (const lead of s.leads as any[]) {
+          const info = lead.contactId ? byContact.get(lead.contactId) : null
+          lead.unreadCount = info?.unread || 0
+          lead.lastMessage = info?.lastMessage || null
+          lead.lastMessageAt = info?.lastMessageAt || null
+        }
+      }
+    }
+
     return stages
   }
 }

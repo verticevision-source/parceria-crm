@@ -1,16 +1,19 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
-import { Plus, Phone, User, TrendingUp, Search, Layers, X, Trash2 } from 'lucide-react'
-// Trash2 usado para excluir etapas e leads
-import { leadsApi, pipelineApi, contactsApi, crmBoardsApi } from '../services/api'
+import { Plus, Phone, User, TrendingUp, Search, Layers, X, Trash2, MessageSquare, Send } from 'lucide-react'
+import { leadsApi, pipelineApi, contactsApi, crmBoardsApi, whatsappApi } from '../services/api'
+import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
-import { Lead, PipelineStage, Contact, KanbanColumn } from '../types'
+import { Lead, PipelineStage, Contact, KanbanColumn, Message } from '../types'
 import Modal from '../components/UI/Modal'
 import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import { format } from 'date-fns'
 import toast from 'react-hot-toast'
+
+// Lead estendido com info de mensagens (vem do kanban do board)
+type LeadWithChat = Lead & { unreadCount?: number; lastMessage?: string | null }
 
 interface Board {
   id: string
@@ -20,7 +23,12 @@ interface Board {
   stages: PipelineStage[]
 }
 
-function LeadCard({ lead, index, onDelete }: { lead: Lead; index: number; onDelete: (id: string) => void }) {
+function LeadCard({ lead, index, onDelete, onOpenChat }: {
+  lead: LeadWithChat; index: number
+  onDelete: (id: string) => void
+  onOpenChat: (lead: LeadWithChat) => void
+}) {
+  const unread = lead.unreadCount || 0
   return (
     <Draggable draggableId={lead.id} index={index}>
       {(provided, snapshot) => (
@@ -28,14 +36,28 @@ function LeadCard({ lead, index, onDelete }: { lead: Lead; index: number; onDele
           ref={provided.innerRef}
           {...provided.draggableProps}
           {...provided.dragHandleProps}
-          className={`kanban-card mb-3 group ${snapshot.isDragging ? 'shadow-glow rotate-1' : ''}`}
+          className={`kanban-card mb-3 group relative ${snapshot.isDragging ? 'shadow-glow rotate-1' : ''} ${unread > 0 ? 'ring-1 ring-green-500/40' : ''}`}
         >
+          {/* Badge de mensagens não lidas */}
+          {unread > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 bg-green-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center shadow">
+              {unread}
+            </span>
+          )}
           <div className="flex items-start justify-between gap-2 mb-2">
             <h4 className="text-text-primary text-sm font-medium leading-tight">
               {lead.contact?.name || 'Sem nome'}
             </h4>
             <div className="flex items-center gap-1 flex-shrink-0">
               <StatusBadge status={lead.status} />
+              <button
+                onClick={(e) => { e.stopPropagation(); onOpenChat(lead) }}
+                onMouseDown={(e) => e.stopPropagation()}
+                className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-green-500 p-0.5"
+                title="Abrir conversa"
+              >
+                <MessageSquare size={13} />
+              </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(lead.id) }}
                 onMouseDown={(e) => e.stopPropagation()}
@@ -78,12 +100,13 @@ function LeadCard({ lead, index, onDelete }: { lead: Lead; index: number; onDele
 }
 
 function KanbanCol({
-  column, canManage, onDelete, onDeleteLead,
+  column, canManage, onDelete, onDeleteLead, onOpenChat,
 }: {
   column: KanbanColumn
   canManage: boolean
   onDelete: (id: string) => void
   onDeleteLead: (id: string) => void
+  onOpenChat: (lead: LeadWithChat) => void
 }) {
   return (
     <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border w-64 flex-shrink-0">
@@ -116,7 +139,7 @@ function KanbanCol({
             }`}
           >
             {column.leads.map((lead, index) => (
-              <LeadCard key={lead.id} lead={lead} index={index} onDelete={onDeleteLead} />
+              <LeadCard key={lead.id} lead={lead as LeadWithChat} index={index} onDelete={onDeleteLead} onOpenChat={onOpenChat} />
             ))}
             {provided.placeholder}
           </div>
@@ -143,6 +166,14 @@ export default function CRM() {
   const [form, setForm] = useState({
     contactId: '', pipelineStageId: '', source: '', value: '', notes: ''
   })
+
+  // Chat drawer
+  const [chatLead, setChatLead] = useState<LeadWithChat | null>(null)
+  const [chatMessages, setChatMessages] = useState<Message[]>([])
+  const [chatLoading, setChatLoading] = useState(false)
+  const [chatInput, setChatInput] = useState('')
+  const [chatSending, setChatSending] = useState(false)
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const currentBoard = boards.find(b => b.id === boardId)
 
@@ -270,6 +301,71 @@ export default function CRM() {
     }
   }
 
+  // ── Chat do lead ───────────────────────────────────────────────────────────
+  const openChat = async (lead: LeadWithChat) => {
+    setChatLead(lead)
+    setChatMessages([])
+    setChatLoading(true)
+    // Zera badge localmente
+    setColumns(prev => prev.map(c => ({
+      ...c,
+      leads: c.leads.map(l => l.id === lead.id ? { ...l, unreadCount: 0 } as any : l),
+    })))
+    try {
+      const res = await leadsApi.getMessages(lead.id)
+      setChatMessages(res.data.data.messages || [])
+    } catch {
+      toast.error('Erro ao carregar conversa')
+    } finally {
+      setChatLoading(false)
+    }
+  }
+
+  const sendChatMessage = async () => {
+    if (!chatInput.trim() || !chatLead?.contact?.phone) return
+    const body = chatInput.trim()
+    setChatInput('')
+    setChatSending(true)
+    try {
+      const res = await whatsappApi.sendMessage(chatLead.contact.phone, body)
+      setChatMessages(prev => [...prev, res.data.data])
+    } catch {
+      toast.error('Erro ao enviar — verifique se há um número conectado')
+      setChatInput(body)
+    } finally {
+      setChatSending(false)
+    }
+  }
+
+  // Auto-scroll do chat
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [chatMessages])
+
+  // Socket: novas mensagens atualizam badges e o chat aberto
+  useEffect(() => {
+    const socket = getSocket()
+    const handler = (payload: any) => {
+      const contactId = payload?.contact?.id || payload?.message?.contactId
+      // Atualiza badge no card correspondente
+      setColumns(prev => prev.map(c => ({
+        ...c,
+        leads: c.leads.map(l => {
+          if (l.contactId === contactId && (!chatLead || chatLead.id !== l.id)) {
+            return { ...l, unreadCount: ((l as any).unreadCount || 0) + 1 } as any
+          }
+          return l
+        }),
+      })))
+      // Se o chat desse contato está aberto, anexa a mensagem
+      if (chatLead && chatLead.contact?.id === contactId && payload?.message) {
+        setChatMessages(prev => [...prev, payload.message])
+      }
+    }
+    socket.on('new-message', handler)
+    return () => { socket.off('new-message', handler) }
+  }, [chatLead])
+
   if (loading) return <PageLoader />
 
   const filteredColumns = columns.map((col) => ({
@@ -367,6 +463,7 @@ export default function CRM() {
                   canManage={isAdmin && !!boardId}
                   onDelete={handleDeleteStage}
                   onDeleteLead={handleDeleteLead}
+                  onOpenChat={openChat}
                 />
               ))}
             </div>
@@ -393,6 +490,84 @@ export default function CRM() {
             <div className="flex gap-2 mt-4">
               <button className="btn-primary flex-1" onClick={handleAddStage}>Adicionar</button>
               <button className="btn-ghost flex-1 border border-border" onClick={() => setShowAddStage(false)}>Cancelar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Drawer de Chat do Lead ── */}
+      {chatLead && (
+        <div className="fixed inset-0 z-50 flex justify-end" onClick={() => setChatLead(null)}>
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />
+          <div
+            className="relative w-full max-w-md h-full flex flex-col border-l border-border shadow-modal animate-slide-in"
+            style={{ background: 'linear-gradient(180deg, #0f1622 0%, #0a0f1e 100%)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center gap-3 p-4 border-b border-border flex-shrink-0">
+              <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center flex-shrink-0">
+                <span className="text-text-secondary font-medium text-sm">
+                  {chatLead.contact?.name?.charAt(0).toUpperCase() || '?'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-text-primary font-semibold text-sm truncate">{chatLead.contact?.name || 'Contato'}</p>
+                <p className="text-text-muted text-xs">{chatLead.contact?.phone}</p>
+              </div>
+              <button onClick={() => setChatLead(null)} className="text-text-muted hover:text-text-primary p-1">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Mensagens */}
+            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+              {chatLoading ? (
+                <div className="flex justify-center py-8">
+                  <div className="animate-spin rounded-full h-6 w-6 border-2 border-primary border-t-transparent" />
+                </div>
+              ) : chatMessages.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-text-muted">
+                  <MessageSquare size={36} className="mb-2 opacity-20" />
+                  <p className="text-sm">Nenhuma mensagem ainda</p>
+                  <p className="text-xs mt-1">Envie a primeira mensagem abaixo</p>
+                </div>
+              ) : (
+                chatMessages.map((msg) => (
+                  <div key={msg.id} className={`flex ${msg.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}>
+                    <div className={msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'}>
+                      {msg.textBody && <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.textBody}</p>}
+                      {!msg.textBody && <p className="text-sm opacity-60">[mídia]</p>}
+                      <p className={`text-xs mt-1 ${msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'}`}>
+                        {format(new Date(msg.sentAt || msg.createdAt), 'HH:mm')}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              )}
+              <div ref={chatEndRef} />
+            </div>
+
+            {/* Input */}
+            <div className="p-3 border-t border-border flex-shrink-0 flex items-end gap-2">
+              <textarea
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChatMessage() }
+                }}
+                placeholder="Digite uma mensagem..."
+                rows={1}
+                className="input-field flex-1 resize-none max-h-24 py-2.5"
+              />
+              <button
+                onClick={sendChatMessage}
+                disabled={chatSending || !chatInput.trim()}
+                className="btn-primary p-2.5 rounded-xl flex-shrink-0"
+                title="Enviar"
+              >
+                <Send size={16} />
+              </button>
             </div>
           </div>
         </div>
