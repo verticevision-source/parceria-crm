@@ -170,34 +170,6 @@ export default function Login() {
               )}
             </button>
           </form>
-
-          {/* Demo credentials */}
-          <div className="mt-8 p-4 rounded-xl" style={{
-            background: 'rgba(15,22,34,0.8)',
-            border: '1px solid #1e2d4a',
-          }}>
-            <p className="text-text-muted text-xs font-bold uppercase tracking-wider mb-3">
-              Credenciais de demonstração
-            </p>
-            <div className="space-y-2">
-              <button
-                type="button"
-                onClick={() => { setEmail('admin@crm.com'); setPassword('Admin@123') }}
-                className="w-full text-left px-3 py-2 rounded-lg transition-colors hover:bg-bg-hover"
-              >
-                <span className="text-gold text-xs font-semibold">ADMIN</span>
-                <span className="text-text-secondary text-xs ml-2">admin@crm.com / Admin@123</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => { setEmail('atendente@crm.com'); setPassword('User@123') }}
-                className="w-full text-left px-3 py-2 rounded-lg transition-colors hover:bg-bg-hover"
-              >
-                <span className="text-primary-light text-xs font-semibold">USER</span>
-                <span className="text-text-secondary text-xs ml-2">atendente@crm.com / User@123</span>
-              </button>
-            </div>
-          </div>
         </div>
       </div>
     </div>
