@@ -511,6 +511,24 @@ model ChatFlowSession {
   @@map("chat_flow_sessions")
 }
 
+// ── Números de WhatsApp (multi-número) ────────────────────────────────────────
+
+model WhatsAppNumber {
+  id             String   @id @default(uuid())
+  label          String                      // apelido amigável ("Vendas SP", "Suporte")
+  phoneNumberId  String   @unique             // Phone Number ID da Meta
+  token          String                       // token de acesso desse número
+  wabaId         String?                       // WhatsApp Business Account ID
+  displayNumber  String?                       // ex: +55 15 99999-9999
+  verifiedName   String?
+  isActive       Boolean  @default(true)
+  isDefault      Boolean  @default(false)      // número padrão para envios
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("whatsapp_numbers")
+}
+
 // ── Configuração de IA ────────────────────────────────────────────────────────
 
 model AIConfig {

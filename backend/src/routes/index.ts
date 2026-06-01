@@ -17,6 +17,7 @@ import reportRoutes from './report.routes'
 import internalChatRoutes from './internalChat.routes'
 import aiRoutes from './ai.routes'
 import chatFlowRoutes from './chatFlow.routes'
+import whatsappNumberRoutes from './whatsappNumber.routes'
 
 const router = Router()
 
@@ -38,5 +39,6 @@ router.use('/reports', reportRoutes)
 router.use('/internal-chat', internalChatRoutes)
 router.use('/ai', aiRoutes)
 router.use('/flows', chatFlowRoutes)
+router.use('/whatsapp-numbers', whatsappNumberRoutes)
 
 export default router

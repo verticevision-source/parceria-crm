@@ -15,6 +15,7 @@ import BulkMessage from './pages/BulkMessage'
 import Reports from './pages/Reports'
 import InternalChat from './pages/InternalChat'
 import FlowBuilder from './pages/FlowBuilder'
+import Monitor from './pages/Monitor'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -85,6 +86,15 @@ export default function App() {
           element={
             <AdminRoute>
               <FlowBuilder />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/monitor"
+          element={
+            <AdminRoute>
+              <Monitor />
             </AdminRoute>
           }
         />

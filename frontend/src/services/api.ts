@@ -54,6 +54,23 @@ export const aiApi = {
   suggest: (conversationId: string) => api.post('/ai/suggest', { conversationId }),
 }
 
+// Números de WhatsApp (multi-número)
+export const numbersApi = {
+  list: () => api.get('/whatsapp-numbers'),
+  add: (data: { label: string; phoneNumberId: string; token: string; wabaId?: string }) =>
+    api.post('/whatsapp-numbers', data),
+  update: (id: string, data: object) => api.put(`/whatsapp-numbers/${id}`, data),
+  setDefault: (id: string) => api.patch(`/whatsapp-numbers/${id}/default`),
+  remove: (id: string) => api.delete(`/whatsapp-numbers/${id}`),
+}
+
+// Supervisão / Monitor ao vivo
+export const monitorApi = {
+  agentConversations: (userId: string) => api.get(`/internal-chat/supervision/${userId}/conversations`),
+  conversationMessages: (conversationId: string) =>
+    api.get(`/internal-chat/supervision/conversations/${conversationId}/messages`),
+}
+
 // Fluxos (chatbot)
 export const flowsApi = {
   list: () => api.get('/flows'),

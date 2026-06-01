@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
-  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow
+  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../Logo'
@@ -16,6 +16,7 @@ const navItems = [
 ]
 
 const adminItems = [
+  { to: '/monitor',        icon: Eye,        label: 'Monitor ao Vivo' },
   { to: '/reports',        icon: BarChart3,  label: 'Relatórios' },
   { to: '/flows',          icon: Workflow,   label: 'Robô / Fluxos' },
   { to: '/crm-boards',     icon: Layers,     label: 'CRM Boards' },

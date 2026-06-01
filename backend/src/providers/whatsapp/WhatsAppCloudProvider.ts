@@ -1,5 +1,6 @@
 import { IWhatsAppProvider, ConnectionStatus, IncomingMessage, SendMessageResult, SendFilePayload } from './IWhatsAppProvider'
 import { logger } from '../../utils/logger'
+import { prisma } from '../../config/database'
 
 /**
  * WhatsApp Cloud API (API Oficial da Meta) provider.
@@ -32,17 +33,32 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
   }
 
-  private get headers() {
-    return {
-      'Authorization': `Bearer ${this.token}`,
-      'Content-Type': 'application/json',
-    }
+  /**
+   * Resolve as credenciais a usar: número padrão cadastrado no banco
+   * (multi-número) com fallback para as variáveis de ambiente.
+   */
+  private async creds(phoneNumberId?: string): Promise<{ token: string; phoneNumberId: string }> {
+    try {
+      const num = phoneNumberId
+        ? await prisma.whatsAppNumber.findUnique({ where: { phoneNumberId } })
+        : await prisma.whatsAppNumber.findFirst({
+            where: { isActive: true },
+            orderBy: [{ isDefault: 'desc' }, { createdAt: 'asc' }],
+          })
+      if (num?.token && num?.phoneNumberId) {
+        return { token: num.token, phoneNumberId: num.phoneNumberId }
+      }
+    } catch { /* fallback abaixo */ }
+    return { token: this.token, phoneNumberId: this.phoneNumberId }
   }
 
-  private async req<T = unknown>(method: string, path: string, body?: unknown): Promise<T> {
+  private async req<T = unknown>(method: string, path: string, body?: unknown, token?: string): Promise<T> {
     const res = await fetch(`${this.baseUrl}${path}`, {
       method,
-      headers: this.headers,
+      headers: {
+        'Authorization': `Bearer ${token || this.token}`,
+        'Content-Type': 'application/json',
+      },
       body: body ? JSON.stringify(body) : undefined,
     })
     if (!res.ok) {
@@ -60,33 +76,24 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
   // ── Conexão ───────────────────────────────────────────────────────────────
 
   async connect(sessionId: string, _userId: string): Promise<ConnectionStatus> {
-    // Na Cloud API não há QR code — verificamos se as credenciais funcionam
-    if (!this.token || !this.phoneNumberId) {
+    const { token, phoneNumberId } = await this.creds()
+    if (!token || !phoneNumberId) {
       return {
         sessionId,
         status: 'ERROR',
-        error: 'WHATSAPP_CLOUD_TOKEN e WHATSAPP_PHONE_NUMBER_ID não configurados.',
+        error: 'Nenhum número de WhatsApp configurado. Adicione um número na Central de Números.',
       }
     }
 
     try {
-      // Verifica se o número está ativo consultando a API da Meta
-      const data = await this.req<any>('GET', `/${this.phoneNumberId}?fields=display_phone_number,verified_name,status`)
+      const data = await this.req<any>('GET', `/${phoneNumberId}?fields=display_phone_number,verified_name,status`, undefined, token)
       const phoneNumber = data?.display_phone_number?.replace(/\D/g, '') || ''
       logger.info(`[CloudAPI] Conectado: ${data?.display_phone_number} (${data?.verified_name})`)
 
-      return {
-        sessionId,
-        status: 'CONNECTED',
-        phoneNumber,
-      }
+      return { sessionId, status: 'CONNECTED', phoneNumber }
     } catch (err: any) {
       logger.error('[CloudAPI] Erro ao verificar credenciais:', err.message)
-      return {
-        sessionId,
-        status: 'ERROR',
-        error: `Credenciais inválidas: ${err.message}`,
-      }
+      return { sessionId, status: 'ERROR', error: `Credenciais inválidas: ${err.message}` }
     }
   }
 
@@ -96,12 +103,13 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
   }
 
   async getStatus(sessionId: string): Promise<ConnectionStatus> {
-    if (!this.token || !this.phoneNumberId) {
+    const { token, phoneNumberId } = await this.creds()
+    if (!token || !phoneNumberId) {
       return { sessionId, status: 'DISCONNECTED' }
     }
 
     try {
-      const data = await this.req<any>('GET', `/${this.phoneNumberId}?fields=display_phone_number,status`)
+      const data = await this.req<any>('GET', `/${phoneNumberId}?fields=display_phone_number,status`, undefined, token)
       const phoneNumber = data?.display_phone_number?.replace(/\D/g, '') || ''
       const status = data?.status === 'FLAGGED' ? 'ERROR' : 'CONNECTED'
       return { sessionId, status, phoneNumber }
@@ -119,14 +127,15 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
 
   async sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
+    const { token, phoneNumberId } = await this.creds()
 
-    const data = await this.req<any>('POST', `/${this.phoneNumberId}/messages`, {
+    const data = await this.req<any>('POST', `/${phoneNumberId}/messages`, {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: number,
       type: 'text',
       text: { body },
-    })
+    }, token)
 
     logger.info(`[CloudAPI] Mensagem enviada para ${number} | wamid: ${data?.messages?.[0]?.id}`)
 
@@ -138,6 +147,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
 
   async sendFile(sessionId: string, to: string, file: SendFilePayload): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
+    const { token, phoneNumberId } = await this.creds()
 
     // Determina o tipo de mídia
     const mediaType = file.mimetype.startsWith('image/') ? 'image'
@@ -152,9 +162,9 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     formData.append('messaging_product', 'whatsapp')
     formData.append('type', file.mimetype)
 
-    const uploadRes = await fetch(`${this.baseUrl}/${this.phoneNumberId}/media`, {
+    const uploadRes = await fetch(`${this.baseUrl}/${phoneNumberId}/media`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${this.token}` },
+      headers: { 'Authorization': `Bearer ${token}` },
       body: formData,
     })
 
@@ -180,7 +190,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
       (messageBody[mediaType] as any).filename = file.filename
     }
 
-    const data = await this.req<any>('POST', `/${this.phoneNumberId}/messages`, messageBody)
+    const data = await this.req<any>('POST', `/${phoneNumberId}/messages`, messageBody, token)
 
     return {
       externalId: data?.messages?.[0]?.id || `cloud_${Date.now()}`,
@@ -193,7 +203,8 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     latitude: number, longitude: number, name?: string, address?: string
   ): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
-    const data = await this.req<any>('POST', `/${this.phoneNumberId}/messages`, {
+    const { token, phoneNumberId } = await this.creds()
+    const data = await this.req<any>('POST', `/${phoneNumberId}/messages`, {
       messaging_product: 'whatsapp',
       recipient_type: 'individual',
       to: number,
@@ -203,7 +214,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
         ...(name && { name }),
         ...(address && { address }),
       },
-    })
+    }, token)
     return {
       externalId: data?.messages?.[0]?.id || `cloud_${Date.now()}`,
       sentAt: new Date(),
@@ -285,8 +296,8 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
           const body = this.extractText(msg)
           const mediaUrl = this.extractMediaUrl(msg)
 
-          // Marca como lida
-          this.markAsRead(msg.id).catch(() => {})
+          // Marca como lida (usando o número que recebeu)
+          this.markAsRead(msg.id, phoneNumberId).catch(() => {})
 
           const incoming: IncomingMessage = {
             externalId: msg.id || `cloud_${Date.now()}`,
@@ -356,13 +367,14 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
   }
 
-  private async markAsRead(messageId: string): Promise<void> {
+  private async markAsRead(messageId: string, phoneNumberId?: string): Promise<void> {
     try {
-      await this.req('POST', `/${this.phoneNumberId}/messages`, {
+      const { token, phoneNumberId: pid } = await this.creds(phoneNumberId)
+      await this.req('POST', `/${pid}/messages`, {
         messaging_product: 'whatsapp',
         status: 'read',
         message_id: messageId,
-      })
+      }, token)
     } catch {
       // ignora erros de mark-as-read
     }
@@ -372,13 +384,14 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
    * Baixa uma mídia do ID da Meta e retorna como base64
    */
   async downloadMedia(mediaId: string): Promise<{ data: string; mimeType: string }> {
+    const { token } = await this.creds()
     // 1. Obtém a URL de download
-    const info = await this.req<any>('GET', `/${mediaId}`)
+    const info = await this.req<any>('GET', `/${mediaId}`, undefined, token)
     const url: string = info.url
     const mimeType: string = info.mime_type || 'application/octet-stream'
 
     // 2. Baixa o arquivo
-    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${this.token}` } })
+    const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } })
     if (!res.ok) throw new Error(`Erro ao baixar mídia: ${res.status}`)
 
     const buffer = Buffer.from(await res.arrayBuffer())
