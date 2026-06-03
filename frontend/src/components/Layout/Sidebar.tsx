@@ -5,6 +5,7 @@ import {
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../Logo'
+import Avatar from '../UI/Avatar'
 
 const navItems = [
   { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
@@ -142,12 +143,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
           <div className="flex items-center gap-3 px-3 py-3 mt-1 rounded-xl"
             style={{ background: 'rgba(15,22,34,0.6)', border: '1px solid #1e2d4a' }}>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-              style={{ background: 'linear-gradient(135deg, #6366f1, #7c3aed)' }}>
-              <span className="text-white text-xs font-bold">
-                {user?.name?.charAt(0).toUpperCase()}
-              </span>
-            </div>
+            <Avatar src={user?.avatarUrl} name={user?.name} size={32} />
             <div className="flex-1 min-w-0">
               <p className="text-text-primary text-xs font-semibold truncate">{user?.name}</p>
               <p className="text-text-muted text-[10px] truncate">{user?.email}</p>

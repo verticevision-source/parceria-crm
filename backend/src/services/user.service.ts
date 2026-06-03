@@ -12,6 +12,7 @@ export class UserService {
         role: true,
         isActive: true,
         aiEnabled: true,
+        avatarUrl: true,
         createdAt: true,
         updatedAt: true,
         whatsappSessions: {
@@ -70,11 +71,12 @@ export class UserService {
 
   static async update(
     id: string,
-    data: { name?: string; email?: string; password?: string }
+    data: { name?: string; email?: string; password?: string; avatarUrl?: string }
   ) {
     const updateData: Record<string, unknown> = {}
     if (data.name) updateData.name = data.name
     if (data.email) updateData.email = data.email
+    if (data.avatarUrl !== undefined) updateData.avatarUrl = data.avatarUrl || null
     if (data.password) {
       updateData.passwordHash = await bcrypt.hash(data.password, authConfig.bcryptRounds)
     }
@@ -82,7 +84,7 @@ export class UserService {
     return prisma.user.update({
       where: { id },
       data: updateData,
-      select: { id: true, name: true, email: true, role: true, isActive: true },
+      select: { id: true, name: true, email: true, role: true, isActive: true, avatarUrl: true },
     })
   }
 

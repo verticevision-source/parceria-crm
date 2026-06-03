@@ -8,6 +8,7 @@ import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api } 
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
+import Avatar from '../components/UI/Avatar'
 import { StatusBadge } from '../components/UI/Badge'
 import { format, isToday, isYesterday } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -65,11 +66,7 @@ function ConversationItem({
       }`}
     >
       <div className="relative flex-shrink-0">
-        <div className="w-11 h-11 bg-bg-tertiary rounded-full flex items-center justify-center">
-          <span className="text-text-secondary font-medium text-sm">
-            {conversation.contact?.name?.charAt(0).toUpperCase() || '?'}
-          </span>
-        </div>
+        <Avatar src={conversation.contact?.avatarUrl} name={conversation.contact?.name} size={44} />
         {conversation.unreadCount > 0 && (
           <span className="absolute -top-1 -right-1 w-5 h-5 bg-primary text-white text-xs rounded-full flex items-center justify-center font-bold">
             {conversation.unreadCount > 9 ? '9+' : conversation.unreadCount}
@@ -605,11 +602,7 @@ export default function Attendance() {
               >
                 <ChevronRight size={20} className="rotate-180" />
               </button>
-              <div className="w-10 h-10 bg-bg-tertiary rounded-full flex items-center justify-center flex-shrink-0">
-                <span className="text-text-secondary font-medium text-sm">
-                  {selected.contact?.name?.charAt(0).toUpperCase() || '?'}
-                </span>
-              </div>
+              <Avatar src={selected.contact?.avatarUrl} name={selected.contact?.name} size={40} />
               <div className="flex-1 min-w-0">
                 <p className="text-text-primary font-semibold text-sm truncate">
                   {displayPhone(selected.contact?.name) || displayPhone(selected.contact?.phone) || 'Desconhecido'}
@@ -975,10 +968,8 @@ export default function Attendance() {
         <div className="hidden lg:block w-72 bg-bg-secondary border-l border-border overflow-y-auto flex-shrink-0">
           <div className="p-5">
             <div className="text-center mb-5">
-              <div className="w-16 h-16 bg-primary/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                <span className="text-primary text-2xl font-bold">
-                  {selected.contact.name?.charAt(0).toUpperCase()}
-                </span>
+              <div className="mx-auto mb-3 w-fit">
+                <Avatar src={selected.contact.avatarUrl} name={selected.contact.name} size={64} />
               </div>
               <h3 className="text-text-primary font-semibold">{displayPhone(selected.contact.name)}</h3>
               <p className="text-text-muted text-sm">{displayPhone(selected.contact.phone)}</p>

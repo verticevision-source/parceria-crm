@@ -3,12 +3,14 @@ import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2, Sparkles } 
 import { usersApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { User as UserType } from '../types'
+import Avatar from '../components/UI/Avatar'
+import { fileToAvatarDataUrl } from '../utils/image'
 import Modal from '../components/UI/Modal'
 import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER' }
+const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER', avatarUrl: '' }
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -40,7 +42,7 @@ export default function Users() {
 
   const openEdit = (u: UserType) => {
     setEditing(u)
-    setForm({ name: u.name, email: u.email, password: '', role: u.role })
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, avatarUrl: u.avatarUrl || '' })
     setShowForm(true)
   }
 
@@ -56,7 +58,7 @@ export default function Users() {
     setSaving(true)
     try {
       if (editing) {
-        const data: Record<string, string> = { name: form.name, email: form.email }
+        const data: Record<string, string> = { name: form.name, email: form.email, avatarUrl: form.avatarUrl }
         if (form.password) data.password = form.password
         await usersApi.update(editing.id, data)
         toast.success('Usuário atualizado!')
@@ -157,11 +159,7 @@ export default function Users() {
                 <tr key={u.id} className="border-b border-border/50 hover:bg-bg-hover transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 bg-primary/20 rounded-full flex items-center justify-center">
-                        <span className="text-primary text-sm font-bold">
-                          {u.name.charAt(0).toUpperCase()}
-                        </span>
-                      </div>
+                      <Avatar src={u.avatarUrl} name={u.name} size={36} />
                       <div>
                         <p className="text-text-primary text-sm font-medium">{u.name}</p>
                         <p className="text-text-muted text-xs">{u.email}</p>
@@ -269,6 +267,21 @@ export default function Users() {
         title={editing ? 'Editar Usuário' : 'Novo Usuário'}
       >
         <div className="space-y-4">
+          {editing && (
+            <div className="flex items-center gap-4">
+              <Avatar src={form.avatarUrl} name={form.name} size={56} />
+              <label className="btn-ghost border border-border text-sm cursor-pointer inline-flex items-center gap-2">
+                {form.avatarUrl ? 'Trocar foto' : 'Adicionar foto'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]; if (!file) return
+                    try { const url = await fileToAvatarDataUrl(file); setForm((f) => ({ ...f, avatarUrl: url })) }
+                    catch { toast.error('Erro ao carregar imagem') }
+                  }} />
+              </label>
+              {form.avatarUrl && <button onClick={() => setForm({ ...form, avatarUrl: '' })} className="text-xs text-danger hover:underline">Remover</button>}
+            </div>
+          )}
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">Nome *</label>
             <input

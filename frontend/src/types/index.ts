@@ -12,6 +12,7 @@ export interface User {
   role: UserRole
   isActive: boolean
   aiEnabled?: boolean
+  avatarUrl?: string | null
   createdAt: string
   updatedAt?: string
   whatsappSessions?: WhatsAppSession[]
@@ -39,6 +40,7 @@ export interface Contact {
   city?: string
   documentNumber?: string
   notes?: string
+  avatarUrl?: string | null
   createdAt: string
   updatedAt: string
   user?: { id: string; name: string }
@@ -153,6 +155,7 @@ export interface AuthUser {
   email: string
   role: UserRole
   aiEnabled?: boolean
+  avatarUrl?: string | null
 }
 
 export interface KanbanColumn {

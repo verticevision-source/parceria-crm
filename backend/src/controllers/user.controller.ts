@@ -14,6 +14,7 @@ const updateSchema = z.object({
   name: z.string().min(2).optional(),
   email: z.string().email().optional(),
   password: z.string().min(6).optional(),
+  avatarUrl: z.string().optional(),
 })
 
 export class UserController {

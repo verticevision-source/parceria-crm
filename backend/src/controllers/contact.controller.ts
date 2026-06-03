@@ -9,6 +9,7 @@ const createSchema = z.object({
   city: z.string().optional(),
   documentNumber: z.string().optional(),
   notes: z.string().optional(),
+  avatarUrl: z.string().optional(),
 })
 
 export class ContactController {

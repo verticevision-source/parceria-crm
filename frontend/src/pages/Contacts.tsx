@@ -4,6 +4,8 @@ import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send }
 import { contactsApi, whatsappApi, templatesApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { Contact } from '../types'
+import Avatar from '../components/UI/Avatar'
+import { fileToAvatarDataUrl } from '../utils/image'
 
 // Saudação conforme o horário
 function saudacao(): string {
@@ -21,7 +23,7 @@ import Modal from '../components/UI/Modal'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-const emptyForm = { name: '', phone: '', city: '', documentNumber: '', notes: '' }
+const emptyForm = { name: '', phone: '', city: '', documentNumber: '', notes: '', avatarUrl: '' }
 
 export default function Contacts() {
   const navigate = useNavigate()
@@ -109,6 +111,7 @@ export default function Contacts() {
       city: c.city || '',
       documentNumber: c.documentNumber || '',
       notes: c.notes || '',
+      avatarUrl: c.avatarUrl || '',
     })
     setShowForm(true)
   }
@@ -190,11 +193,7 @@ export default function Contacts() {
             <div key={contact.id} className="card hover:border-border-light transition-colors">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 bg-primary/20 rounded-full flex items-center justify-center">
-                    <span className="text-primary font-bold">
-                      {contact.name.charAt(0).toUpperCase()}
-                    </span>
-                  </div>
+                  <Avatar src={contact.avatarUrl} name={contact.name} size={44} />
                   <div>
                     <h3 className="text-text-primary font-semibold text-sm">{contact.name}</h3>
                     <p className="text-text-muted text-xs">{contact.user?.name}</p>
@@ -339,6 +338,26 @@ export default function Contacts() {
         title={editing ? 'Editar Contato' : 'Novo Contato'}
       >
         <div className="space-y-4">
+          {/* Foto de perfil */}
+          <div className="flex items-center gap-4">
+            <Avatar src={form.avatarUrl} name={form.name} size={64} />
+            <div>
+              <label className="btn-ghost border border-border text-sm cursor-pointer inline-flex items-center gap-2">
+                <User size={14} /> {form.avatarUrl ? 'Trocar foto' : 'Adicionar foto'}
+                <input type="file" accept="image/*" className="hidden"
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0]
+                    if (!file) return
+                    try { setForm((f) => ({ ...f, avatarUrl: '' })); const url = await fileToAvatarDataUrl(file); setForm((f) => ({ ...f, avatarUrl: url })) }
+                    catch { toast.error('Erro ao carregar imagem') }
+                  }} />
+              </label>
+              {form.avatarUrl && (
+                <button onClick={() => setForm({ ...form, avatarUrl: '' })} className="text-xs text-danger ml-2 hover:underline">Remover</button>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">
               <label className="block text-sm font-medium text-text-secondary mb-2">Nome *</label>

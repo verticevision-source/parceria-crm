@@ -52,6 +52,7 @@ export class ContactService {
     city?: string
     documentNumber?: string
     notes?: string
+    avatarUrl?: string
   }) {
     return prisma.contact.create({
       data: { ...data, userId },
@@ -64,6 +65,7 @@ export class ContactService {
     city?: string
     documentNumber?: string
     notes?: string
+    avatarUrl?: string
   }) {
     const contact = await prisma.contact.findUnique({ where: { id } })
     if (!contact) throw new Error('Contato não encontrado')
