@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Search, Phone, MapPin, Edit2, Trash2, User } from 'lucide-react'
-import { contactsApi } from '../services/api'
+import { useNavigate } from 'react-router-dom'
+import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send } from 'lucide-react'
+import { contactsApi, whatsappApi } from '../services/api'
 import { Contact } from '../types'
 import Modal from '../components/UI/Modal'
 import { PageLoader } from '../components/UI/LoadingSpinner'
@@ -9,6 +10,7 @@ import toast from 'react-hot-toast'
 const emptyForm = { name: '', phone: '', city: '', documentNumber: '', notes: '' }
 
 export default function Contacts() {
+  const navigate = useNavigate()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -16,6 +18,29 @@ export default function Contacts() {
   const [editing, setEditing] = useState<Contact | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+
+  // Iniciar conversa
+  const [chatContact, setChatContact] = useState<Contact | null>(null)
+  const [chatMsg, setChatMsg] = useState('')
+  const [sendingChat, setSendingChat] = useState(false)
+
+  const startChat = async () => {
+    if (!chatContact || !chatMsg.trim()) { toast.error('Digite uma mensagem'); return }
+    setSendingChat(true)
+    try {
+      await whatsappApi.sendMessage(chatContact.phone, chatMsg.trim())
+      toast.success('Mensagem enviada! Abrindo conversa...')
+      setChatContact(null)
+      setChatMsg('')
+      navigate('/attendance')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
+        || 'Erro ao enviar. Fora da janela de 24h é preciso um modelo aprovado pela Meta.'
+      toast.error(msg)
+    } finally {
+      setSendingChat(false)
+    }
+  }
 
   const load = useCallback(async () => {
     try {
@@ -140,6 +165,13 @@ export default function Contacts() {
                 </div>
                 <div className="flex gap-1">
                   <button
+                    onClick={() => { setChatContact(contact); setChatMsg('') }}
+                    className="p-1.5 text-text-muted hover:text-success hover:bg-success/10 rounded-lg transition-colors"
+                    title="Iniciar conversa"
+                  >
+                    <MessageSquare size={14} />
+                  </button>
+                  <button
                     onClick={() => openEdit(contact)}
                     className="p-1.5 text-text-muted hover:text-primary hover:bg-primary/10 rounded-lg transition-colors"
                   >
@@ -177,10 +209,52 @@ export default function Contacts() {
                   </span>
                 </div>
               )}
+
+              <button
+                onClick={() => { setChatContact(contact); setChatMsg('') }}
+                className="w-full mt-3 btn-primary text-sm py-2 flex items-center justify-center gap-2"
+              >
+                <MessageSquare size={14} /> Iniciar conversa
+              </button>
             </div>
           ))}
         </div>
       )}
+
+      {/* Modal iniciar conversa */}
+      <Modal
+        isOpen={!!chatContact}
+        onClose={() => setChatContact(null)}
+        title={`Conversar com ${chatContact?.name || ''}`}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 text-sm text-text-muted">
+            <Phone size={14} /> {chatContact?.phone}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">Mensagem</label>
+            <textarea
+              value={chatMsg}
+              onChange={(e) => setChatMsg(e.target.value)}
+              placeholder="Digite a primeira mensagem..."
+              rows={4}
+              className="input-field resize-none"
+              autoFocus
+            />
+            <p className="text-xs text-text-muted mt-1">
+              💡 Para contatos que não falaram com você nas últimas 24h, a Meta exige um modelo de mensagem aprovado.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <button onClick={() => setChatContact(null)} className="flex-1 btn-ghost border border-border">
+              Cancelar
+            </button>
+            <button onClick={startChat} disabled={sendingChat} className="flex-1 btn-primary flex items-center justify-center gap-2">
+              <Send size={15} /> {sendingChat ? 'Enviando...' : 'Enviar e abrir'}
+            </button>
+          </div>
+        </div>
+      </Modal>
 
       {/* Modal */}
       <Modal
