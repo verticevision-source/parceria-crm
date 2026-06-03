@@ -27,6 +27,15 @@ async function findContactByPhone(userId: string, phone: string) {
   return candidates[0] || null
 }
 
+/** Acha contato por telefone em qualquer usuário (modelo de número compartilhado) */
+async function findContactGlobal(phone: string) {
+  const exact = await prisma.contact.findFirst({ where: { phone } })
+  if (exact) return exact
+  const tail = phone.slice(-8)
+  if (tail.length < 6) return null
+  return prisma.contact.findFirst({ where: { phone: { contains: tail } } })
+}
+
 async function resolveDbSession(sessionId: string) {
   // WAHA free tier always uses 'default' as session name — map to actual DB record
   if (sessionId === 'default') {
@@ -60,28 +69,29 @@ function setupMessageListener(): void {
       if (!session) return
 
       const phone = normalizePhone(message.from)
-      let contact = await findContactByPhone(session.userId, phone)
+      // Dono = quem já tem o contato (qualquer atendente). Se ninguém tem, o dono da sessão.
+      let contact = await findContactGlobal(phone)
+      const ownerUserId = contact?.userId || session.userId
 
       if (!contact) {
         contact = await prisma.contact.create({
           data: {
-            userId: session.userId,
+            userId: ownerUserId,
             name: message.senderName?.trim() || phone,
             phone,
           },
         })
         logger.info(`[WhatsAppService] Novo contato criado: ${contact.name} (${phone})`)
       } else if (message.senderName?.trim() && (contact.name === contact.phone || !contact.name)) {
-        // Atualiza o nome placeholder com o nome real do perfil do WhatsApp
         contact = await prisma.contact.update({
           where: { id: contact.id },
           data: { name: message.senderName.trim() },
         })
       }
 
-      // Conversa única por contato (independe da sessão — evita blocos duplicados)
+      // Conversa única por contato
       let conversation = await prisma.conversation.findFirst({
-        where: { userId: session.userId, contactId: contact.id },
+        where: { contactId: contact.id },
         orderBy: { createdAt: 'asc' },
       })
 
@@ -90,7 +100,7 @@ function setupMessageListener(): void {
         isNewConversation = true
         conversation = await prisma.conversation.create({
           data: {
-            userId: session.userId,
+            userId: ownerUserId,
             whatsappSessionId: session.id,
             contactId: contact.id,
             status: 'OPEN',
@@ -114,7 +124,7 @@ function setupMessageListener(): void {
       const savedMessage = await prisma.message.create({
         data: {
           conversationId: conversation.id,
-          userId: session.userId,
+          userId: conversation.userId,
           whatsappSessionId: session.id,
           contactId: contact.id,
           direction: 'IN',
@@ -128,8 +138,9 @@ function setupMessageListener(): void {
         },
       })
 
+      const ownerId = conversation.userId
       if (io) {
-        io.to(`user:${session.userId}`).emit('new-message', {
+        io.to(`user:${ownerId}`).emit('new-message', {
           message: savedMessage,
           conversation,
           contact,
@@ -142,10 +153,10 @@ function setupMessageListener(): void {
         try {
           const { ChatFlowService } = await import('./chatFlow.service')
           // Continua um fluxo aguardando resposta
-          botHandled = await ChatFlowService.handleInbound(conversation.id, message.body, session.userId, contact.phone)
+          botHandled = await ChatFlowService.handleInbound(conversation.id, message.body, ownerId, contact.phone)
           // Ou inicia o fluxo para conversa nova
           if (!botHandled && isNewConversation) {
-            botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, session.userId, contact.phone)
+            botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
           }
         } catch (e) {
           logger.error('[WhatsAppService] Erro no fluxo do chatbot:', e)
@@ -159,7 +170,7 @@ function setupMessageListener(): void {
 
       // ── IA: resposta automática (somente se o bot não assumiu) ──
       if (!botHandled && conversation.aiAuto && message.type === 'TEXT') {
-        handleAiAutoReply(conversation.id, session.userId, contact.phone).catch((e) =>
+        handleAiAutoReply(conversation.id, ownerId, contact.phone).catch((e) =>
           logger.error('[WhatsAppService] Erro na resposta automática de IA:', e)
         )
       }
@@ -463,13 +474,13 @@ export class WhatsAppService {
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
     const phone = normalizePhone(to)
-    let contact = await findContactByPhone(userId, phone)
+    let contact = await findContactGlobal(phone)
     if (!contact) {
       contact = await prisma.contact.create({ data: { userId, name: phone, phone } })
     }
 
     let conversation = await prisma.conversation.findFirst({
-      where: { userId, contactId: contact.id },
+      where: { contactId: contact.id },
       orderBy: { createdAt: 'asc' },
     })
 
@@ -573,7 +584,7 @@ export class WhatsAppService {
     }
 
     let conversation = await prisma.conversation.findFirst({
-      where: { userId, contactId: contact.id },
+      where: { contactId: contact.id },
       orderBy: { createdAt: 'asc' },
     })
     if (!conversation) {
@@ -641,7 +652,7 @@ export class WhatsAppService {
     }
 
     let conversation = await prisma.conversation.findFirst({
-      where: { userId, contactId: contact.id },
+      where: { contactId: contact.id },
       orderBy: { createdAt: 'asc' },
     })
     if (!conversation) {
@@ -700,11 +711,11 @@ export class WhatsAppService {
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
     const phone = normalizePhone(to)
-    let contact = await findContactByPhone(userId, phone)
+    let contact = await findContactGlobal(phone)
     if (!contact) contact = await prisma.contact.create({ data: { userId, name: phone, phone } })
 
     let conversation = await prisma.conversation.findFirst({
-      where: { userId, contactId: contact.id },
+      where: { contactId: contact.id },
       orderBy: { createdAt: 'asc' },
     })
     if (!conversation) {
@@ -750,11 +761,11 @@ export class WhatsAppService {
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
     const phone = normalizePhone(to)
-    let contact = await findContactByPhone(userId, phone)
+    let contact = await findContactGlobal(phone)
     if (!contact) contact = await prisma.contact.create({ data: { userId, name: phone, phone } })
 
     let conversation = await prisma.conversation.findFirst({
-      where: { userId, contactId: contact.id },
+      where: { contactId: contact.id },
       orderBy: { createdAt: 'asc' },
     })
     if (!conversation) {

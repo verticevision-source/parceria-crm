@@ -201,6 +201,12 @@ export class RouletteService {
     // Escolhe o primeiro da lista ponderada (já está ordenada por tempo/leads)
     const chosen = weightedList[0]
 
+    // Reatribui o contato e suas conversas/mensagens ao agente escolhido
+    // (assim o atendente passa a ver e responder a conversa no painel)
+    await prisma.contact.update({ where: { id: input.contactId }, data: { userId: chosen.userId } }).catch(() => {})
+    await prisma.conversation.updateMany({ where: { contactId: input.contactId }, data: { userId: chosen.userId } }).catch(() => {})
+    await prisma.message.updateMany({ where: { contactId: input.contactId }, data: { userId: chosen.userId } }).catch(() => {})
+
     // Cria o lead no banco
     const lead = await prisma.lead.create({
       data: {
