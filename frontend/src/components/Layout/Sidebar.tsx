@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
-  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye
+  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye, FileText
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import Logo from '../Logo'
@@ -21,6 +21,7 @@ const adminItems = [
   { to: '/flows',          icon: Workflow,   label: 'Robô / Fluxos' },
   { to: '/crm-boards',     icon: Layers,     label: 'CRM Boards' },
   { to: '/bulk-messages',  icon: Send,       label: 'Envio em Massa' },
+  { to: '/templates',      icon: FileText,   label: 'Modelos' },
   { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
   { to: '/users',          icon: Users,      label: 'Usuários' },
 ]

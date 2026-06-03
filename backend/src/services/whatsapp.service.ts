@@ -654,6 +654,54 @@ export class WhatsAppService {
     return message
   }
 
+  // Envia mensagem de modelo (template) — inicia conversa fora da janela 24h
+  static async sendTemplate(
+    userId: string, to: string,
+    templateName: string, language: string, variables: string[], previewText: string
+  ) {
+    let session = await prisma.whatsAppSession.findFirst({ where: { userId, status: 'CONNECTED' } })
+    if (!session) {
+      session = await prisma.whatsAppSession.findFirst({ where: { status: 'CONNECTED' }, orderBy: { createdAt: 'desc' } })
+    }
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+
+    let contact = await prisma.contact.findFirst({ where: { userId, phone: to } })
+    if (!contact) contact = await prisma.contact.create({ data: { userId, name: to, phone: to } })
+
+    let conversation = await prisma.conversation.findFirst({
+      where: { userId, whatsappSessionId: session.id, contactId: contact.id },
+    })
+    if (!conversation) {
+      conversation = await prisma.conversation.create({
+        data: {
+          userId, whatsappSessionId: session.id, contactId: contact.id,
+          status: 'OPEN', lastMessage: previewText, lastMessageAt: new Date(),
+        },
+      })
+    }
+
+    const provider = getWhatsAppProvider()
+    const result = (provider as any).sendTemplate
+      ? await (provider as any).sendTemplate(session.id, to, templateName, language, variables)
+      : await provider.sendMessage(session.id, to, previewText)
+
+    const message = await prisma.message.create({
+      data: {
+        conversationId: conversation.id, userId, whatsappSessionId: session.id, contactId: contact.id,
+        direction: 'OUT', type: 'TEXT', textBody: previewText,
+        externalMessageId: result?.externalId, sentAt: result?.sentAt || new Date(),
+      },
+    })
+
+    await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: { lastMessage: previewText, lastMessageAt: new Date() },
+    })
+
+    if (io) io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+    return message
+  }
+
   // Envia localização
   static async sendLocation(
     userId: string, to: string,

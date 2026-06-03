@@ -16,6 +16,7 @@ import Reports from './pages/Reports'
 import InternalChat from './pages/InternalChat'
 import FlowBuilder from './pages/FlowBuilder'
 import Monitor from './pages/Monitor'
+import Templates from './pages/Templates'
 import Settings from './pages/Settings'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
@@ -95,6 +96,15 @@ export default function App() {
           element={
             <AdminRoute>
               <Monitor />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/templates"
+          element={
+            <AdminRoute>
+              <Templates />
             </AdminRoute>
           }
         />

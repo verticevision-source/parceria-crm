@@ -71,6 +71,16 @@ export const monitorApi = {
     api.get(`/internal-chat/supervision/conversations/${conversationId}/messages`),
 }
 
+// Modelos (templates aprovados)
+export const templatesApi = {
+  list: () => api.get('/templates'),
+  create: (data: { name: string; category: string; language: string; body: string; exampleVars?: string[] }) =>
+    api.post('/templates', data),
+  remove: (name: string) => api.delete(`/templates/${name}`),
+  send: (to: string, templateName: string, language: string, variables: string[], previewText: string) =>
+    api.post('/templates/send', { to, templateName, language, variables, previewText }),
+}
+
 // Fluxos (chatbot)
 export const flowsApi = {
   list: () => api.get('/flows'),

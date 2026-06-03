@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send } from 'lucide-react'
-import { contactsApi, whatsappApi } from '../services/api'
+import { contactsApi, whatsappApi, templatesApi } from '../services/api'
 import { Contact } from '../types'
 import Modal from '../components/UI/Modal'
 import { PageLoader } from '../components/UI/LoadingSpinner'
@@ -23,19 +23,40 @@ export default function Contacts() {
   const [chatContact, setChatContact] = useState<Contact | null>(null)
   const [chatMsg, setChatMsg] = useState('')
   const [sendingChat, setSendingChat] = useState(false)
+  const [chatMode, setChatMode] = useState<'free' | 'template'>('free')
+  const [templates, setTemplates] = useState<{ name: string; status: string; language: string; body: string }[]>([])
+  const [selectedTpl, setSelectedTpl] = useState('')
+
+  const openChat = (contact: Contact) => {
+    setChatContact(contact); setChatMsg(''); setChatMode('free'); setSelectedTpl('')
+    // Carrega modelos aprovados para a opção de prospecção
+    templatesApi.list()
+      .then((r) => setTemplates((r.data.data || []).filter((t: any) => t.status === 'APPROVED')))
+      .catch(() => setTemplates([]))
+  }
 
   const startChat = async () => {
-    if (!chatContact || !chatMsg.trim()) { toast.error('Digite uma mensagem'); return }
+    if (!chatContact) return
     setSendingChat(true)
     try {
-      await whatsappApi.sendMessage(chatContact.phone, chatMsg.trim())
+      if (chatMode === 'template') {
+        const tpl = templates.find((t) => t.name === selectedTpl)
+        if (!tpl) { toast.error('Selecione um modelo'); setSendingChat(false); return }
+        // {{1}} = nome do contato
+        const varCount = (tpl.body.match(/\{\{\d+\}\}/g) || []).length
+        const variables = varCount > 0 ? [chatContact.name] : []
+        const preview = tpl.body.replace(/\{\{1\}\}/g, chatContact.name)
+        await templatesApi.send(chatContact.phone, tpl.name, tpl.language, variables, preview)
+      } else {
+        if (!chatMsg.trim()) { toast.error('Digite uma mensagem'); setSendingChat(false); return }
+        await whatsappApi.sendMessage(chatContact.phone, chatMsg.trim())
+      }
       toast.success('Mensagem enviada! Abrindo conversa...')
       setChatContact(null)
-      setChatMsg('')
       navigate('/attendance')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message
-        || 'Erro ao enviar. Fora da janela de 24h é preciso um modelo aprovado pela Meta.'
+        || 'Erro ao enviar. Fora da janela de 24h use um modelo aprovado.'
       toast.error(msg)
     } finally {
       setSendingChat(false)
@@ -165,7 +186,7 @@ export default function Contacts() {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => { setChatContact(contact); setChatMsg('') }}
+                    onClick={() => openChat(contact)}
                     className="p-1.5 text-text-muted hover:text-success hover:bg-success/10 rounded-lg transition-colors"
                     title="Iniciar conversa"
                   >
@@ -231,20 +252,56 @@ export default function Contacts() {
           <div className="flex items-center gap-2 text-sm text-text-muted">
             <Phone size={14} /> {chatContact?.phone}
           </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-2">Mensagem</label>
-            <textarea
-              value={chatMsg}
-              onChange={(e) => setChatMsg(e.target.value)}
-              placeholder="Digite a primeira mensagem..."
-              rows={4}
-              className="input-field resize-none"
-              autoFocus
-            />
-            <p className="text-xs text-text-muted mt-1">
-              💡 Para contatos que não falaram com você nas últimas 24h, a Meta exige um modelo de mensagem aprovado.
-            </p>
+
+          {/* Toggle modo */}
+          <div className="flex gap-1 bg-bg-secondary p-1 rounded-lg">
+            <button onClick={() => setChatMode('free')}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md ${chatMode === 'free' ? 'bg-card shadow text-text-primary' : 'text-text-muted'}`}>
+              💬 Mensagem livre
+            </button>
+            <button onClick={() => setChatMode('template')}
+              className={`flex-1 py-1.5 text-xs font-medium rounded-md ${chatMode === 'template' ? 'bg-card shadow text-text-primary' : 'text-text-muted'}`}>
+              📋 Modelo (prospecção)
+            </button>
           </div>
+
+          {chatMode === 'free' ? (
+            <div>
+              <textarea
+                value={chatMsg}
+                onChange={(e) => setChatMsg(e.target.value)}
+                placeholder="Digite a primeira mensagem..."
+                rows={4}
+                className="input-field resize-none"
+                autoFocus
+              />
+              <p className="text-xs text-text-muted mt-1">
+                💡 Só funciona se o contato te respondeu nas últimas 24h. Senão, use a aba "Modelo".
+              </p>
+            </div>
+          ) : (
+            <div>
+              {templates.length === 0 ? (
+                <div className="text-sm text-text-muted p-3 rounded-lg bg-bg-tertiary">
+                  Nenhum modelo aprovado ainda. Crie um em <b>Modelos</b> (menu admin) e aguarde a aprovação da Meta.
+                </div>
+              ) : (
+                <>
+                  <select className="input-field w-full" value={selectedTpl} onChange={(e) => setSelectedTpl(e.target.value)}>
+                    <option value="">Selecione um modelo aprovado...</option>
+                    {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                  </select>
+                  {selectedTpl && (
+                    <div className="mt-2 p-3 rounded-lg bg-bg-tertiary text-sm text-text-secondary whitespace-pre-wrap">
+                      {templates.find((t) => t.name === selectedTpl)?.body.replace(/\{\{1\}\}/g, chatContact?.name || '')}
+                    </div>
+                  )}
+                  <p className="text-xs text-text-muted mt-1">✅ Modelos funcionam mesmo sem o cliente ter falado antes.</p>
+                </>
+              )}
+            </div>
+          )}
+
           <div className="flex gap-3">
             <button onClick={() => setChatContact(null)} className="flex-1 btn-ghost border border-border">
               Cancelar

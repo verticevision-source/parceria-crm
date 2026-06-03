@@ -198,6 +198,37 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
     }
   }
 
+  /** Envia uma mensagem de modelo (template aprovado) — permite iniciar conversa fora da janela de 24h */
+  async sendTemplate(
+    _sessionId: string, to: string,
+    templateName: string, language: string, variables: string[] = []
+  ): Promise<SendMessageResult> {
+    const number = this.normalizeNumber(to)
+    const { token, phoneNumberId } = await this.creds()
+
+    const components = variables.length > 0 ? [{
+      type: 'body',
+      parameters: variables.map((v) => ({ type: 'text', text: v })),
+    }] : []
+
+    const data = await this.req<any>('POST', `/${phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to: number,
+      type: 'template',
+      template: {
+        name: templateName,
+        language: { code: language },
+        ...(components.length > 0 && { components }),
+      },
+    }, token)
+
+    return {
+      externalId: data?.messages?.[0]?.id || `cloud_${Date.now()}`,
+      sentAt: new Date(),
+    }
+  }
+
   async sendLocation(
     _sessionId: string, to: string,
     latitude: number, longitude: number, name?: string, address?: string
