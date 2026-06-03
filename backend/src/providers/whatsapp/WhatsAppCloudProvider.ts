@@ -324,8 +324,12 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
 
         // ── Atualizações de status de entrega ────────────────────────────
         for (const status of statuses) {
-          logger.debug(`[CloudAPI] Status entrega: ${status.id} → ${status.status}`)
-          // Pode implementar tracking de leitura/entrega aqui no futuro
+          if (status.status === 'failed') {
+            const err = status.errors?.[0]
+            logger.warn(`[CloudAPI] FALHA no envio ${status.id} → para ${status.recipient_id} | código ${err?.code}: ${err?.title} — ${err?.error_data?.details || err?.message || ''}`)
+          } else {
+            logger.info(`[CloudAPI] Status ${status.id} → ${status.status}`)
+          }
         }
       }
     }
