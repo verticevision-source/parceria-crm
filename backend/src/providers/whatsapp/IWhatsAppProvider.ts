@@ -1,6 +1,7 @@
 export interface IncomingMessage {
   externalId: string
   from: string
+  senderName?: string   // nome do perfil do WhatsApp do cliente
   body: string
   type: 'TEXT' | 'IMAGE' | 'AUDIO' | 'DOCUMENT' | 'VIDEO' | 'LOCATION'
   mediaUrl?: string

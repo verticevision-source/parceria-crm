@@ -326,6 +326,8 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
           const type = this.detectType(msg)
           const body = this.extractText(msg)
           const mediaUrl = this.extractMediaUrl(msg)
+          // Nome do perfil do WhatsApp do cliente
+          const senderName = contacts.find((c) => c.wa_id === from)?.profile?.name
 
           // Marca como lida (usando o número que recebeu)
           this.markAsRead(msg.id, phoneNumberId).catch(() => {})
@@ -333,6 +335,7 @@ export class WhatsAppCloudProvider implements IWhatsAppProvider {
           const incoming: IncomingMessage = {
             externalId: msg.id || `cloud_${Date.now()}`,
             from,
+            senderName,
             body,
             type,
             mediaUrl,

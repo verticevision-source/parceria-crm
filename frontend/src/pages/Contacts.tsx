@@ -2,7 +2,21 @@ import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send } from 'lucide-react'
 import { contactsApi, whatsappApi, templatesApi } from '../services/api'
+import { useAuth } from '../contexts/AuthContext'
 import { Contact } from '../types'
+
+// Saudação conforme o horário
+function saudacao(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Bom dia'
+  if (h < 18) return 'Boa tarde'
+  return 'Boa noite'
+}
+
+// Substitui {{1}}, {{2}}... pelos valores
+function fillTemplate(body: string, vars: string[]): string {
+  return body.replace(/\{\{(\d+)\}\}/g, (_, n) => vars[Number(n) - 1] ?? `{{${n}}}`)
+}
 import Modal from '../components/UI/Modal'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import toast from 'react-hot-toast'
@@ -11,6 +25,7 @@ const emptyForm = { name: '', phone: '', city: '', documentNumber: '', notes: ''
 
 export default function Contacts() {
   const navigate = useNavigate()
+  const { user } = useAuth()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -42,10 +57,11 @@ export default function Contacts() {
       if (chatMode === 'template') {
         const tpl = templates.find((t) => t.name === selectedTpl)
         if (!tpl) { toast.error('Selecione um modelo'); setSendingChat(false); return }
-        // {{1}} = nome do contato
+        // Convenção das variáveis: {{1}}=saudação, {{2}}=cliente, {{3}}=atendente
         const varCount = (tpl.body.match(/\{\{\d+\}\}/g) || []).length
-        const variables = varCount > 0 ? [chatContact.name] : []
-        const preview = tpl.body.replace(/\{\{1\}\}/g, chatContact.name)
+        const allVars = [saudacao(), chatContact.name, user?.name || 'Atendimento']
+        const variables = allVars.slice(0, varCount)
+        const preview = fillTemplate(tpl.body, variables)
         await templatesApi.send(chatContact.phone, tpl.name, tpl.language, variables, preview)
       } else {
         if (!chatMsg.trim()) { toast.error('Digite uma mensagem'); setSendingChat(false); return }
@@ -293,7 +309,10 @@ export default function Contacts() {
                   </select>
                   {selectedTpl && (
                     <div className="mt-2 p-3 rounded-lg bg-bg-tertiary text-sm text-text-secondary whitespace-pre-wrap">
-                      {templates.find((t) => t.name === selectedTpl)?.body.replace(/\{\{1\}\}/g, chatContact?.name || '')}
+                      {fillTemplate(
+                        templates.find((t) => t.name === selectedTpl)?.body || '',
+                        [saudacao(), chatContact?.name || '', user?.name || 'Atendimento']
+                      )}
                     </div>
                   )}
                   <p className="text-xs text-text-muted mt-1">✅ Modelos funcionam mesmo sem o cliente ter falado antes.</p>
