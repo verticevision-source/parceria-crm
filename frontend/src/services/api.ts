@@ -69,6 +69,15 @@ export const monitorApi = {
   agentConversations: (userId: string) => api.get(`/internal-chat/supervision/${userId}/conversations`),
   conversationMessages: (conversationId: string) =>
     api.get(`/internal-chat/supervision/conversations/${conversationId}/messages`),
+  send: (conversationId: string, body: string) =>
+    api.post(`/internal-chat/supervision/conversations/${conversationId}/send`, { body }),
+  sendAudio: (conversationId: string, audio: string, mimetype: string) =>
+    api.post(`/internal-chat/supervision/conversations/${conversationId}/send`, { audio, mimetype }),
+  sendMedia: (conversationId: string, file: File) => {
+    const form = new FormData()
+    form.append('file', file)
+    return api.post(`/internal-chat/supervision/conversations/${conversationId}/send-media`, form, { headers: { 'Content-Type': 'multipart/form-data' } })
+  },
 }
 
 // Modelos (templates aprovados)

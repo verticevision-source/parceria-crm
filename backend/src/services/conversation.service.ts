@@ -2,8 +2,10 @@ import { ConversationStatus } from '@prisma/client'
 import { prisma } from '../config/database'
 
 export class ConversationService {
-  static async findAll(userId: string, role: string, filters?: { status?: string }) {
-    const where: Record<string, unknown> = role === 'ADMIN' ? {} : { userId }
+  static async findAll(userId: string, _role: string, filters?: { status?: string }) {
+    // Cada usuário (inclusive admin) vê apenas as próprias conversas no Atendimento.
+    // A visão de todas as conversas fica no Monitor ao Vivo (supervisão).
+    const where: Record<string, unknown> = { userId }
 
     if (filters?.status) {
       where.status = filters.status as ConversationStatus

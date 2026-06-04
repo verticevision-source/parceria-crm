@@ -1,10 +1,12 @@
 import { Router } from 'express'
+import multer from 'multer'
 import { InternalChatController } from '../controllers/internalChat.controller'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { adminMiddleware } from '../middlewares/admin.middleware'
 import { asyncHandler } from '../utils/asyncHandler'
 
 const router = Router()
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 16 * 1024 * 1024 } })
 router.use(authMiddleware)
 
 // Grupos
@@ -21,5 +23,7 @@ router.post('/groups/:id/messages', asyncHandler(InternalChatController.sendMess
 // Supervisão (admin)
 router.get('/supervision/:userId/conversations', adminMiddleware, asyncHandler(InternalChatController.agentConversations))
 router.get('/supervision/conversations/:conversationId/messages', adminMiddleware, asyncHandler(InternalChatController.conversationMessages))
+router.post('/supervision/conversations/:conversationId/send', adminMiddleware, asyncHandler(InternalChatController.supervisionSend))
+router.post('/supervision/conversations/:conversationId/send-media', adminMiddleware, upload.single('file'), asyncHandler(InternalChatController.supervisionSendMedia))
 
 export default router
