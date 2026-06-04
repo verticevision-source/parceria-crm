@@ -12,7 +12,7 @@ export class ConversationService {
     return prisma.conversation.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, phone: true } },
+        contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
         user: { select: { id: true, name: true } },
         whatsappSession: { select: { id: true, phoneNumber: true, status: true } },
         tags: { include: { tag: true } },

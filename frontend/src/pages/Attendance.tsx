@@ -1010,7 +1010,7 @@ export default function Attendance() {
                       className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
                       title="Gravar áudio"
                     >
-                      <Mic size={26} />
+                      <Mic size={28} strokeWidth={2.4} />
                     </button>
                   )}
                 </div>

@@ -252,20 +252,31 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     }
   }
 
-  /** Busca a URL da foto de perfil do WhatsApp de um número */
+  /** Busca a foto de perfil do WhatsApp e retorna como data URL base64
+   *  (baixa a imagem para não depender da URL do WhatsApp, que bloqueia
+   *  hotlink no navegador e expira). */
   async getProfilePicUrl(sessionId: string, number: string): Promise<string | null> {
     const num = this.normalizeNumber(number)
-    try {
-      const data = await this.req<any>('POST', `/chat/fetchProfilePictureUrl/${sessionId}`, { number: num })
+    const fetchUrl = async (n: string): Promise<string | null> => {
+      const data = await this.req<any>('POST', `/chat/fetchProfilePictureUrl/${sessionId}`, { number: n })
       return data?.profilePictureUrl || data?.profilePicUrl || null
+    }
+
+    let url: string | null = null
+    try { url = await fetchUrl(num) } catch { /* tenta @lid abaixo */ }
+    if (!url) { try { url = await fetchUrl(`${num}@lid`) } catch { /* sem foto */ } }
+    if (!url) return null
+
+    // Baixa a imagem e converte para data URL
+    try {
+      const res = await fetch(url)
+      if (!res.ok) return url
+      const buf = Buffer.from(await res.arrayBuffer())
+      if (buf.length === 0 || buf.length > 3_000_000) return url
+      const mime = res.headers.get('content-type') || 'image/jpeg'
+      return `data:${mime};base64,${buf.toString('base64')}`
     } catch {
-      // Tenta com sufixo @lid se o número puro falhar
-      try {
-        const data = await this.req<any>('POST', `/chat/fetchProfilePictureUrl/${sessionId}`, { number: `${num}@lid` })
-        return data?.profilePictureUrl || data?.profilePicUrl || null
-      } catch {
-        return null
-      }
+      return url
     }
   }
 
