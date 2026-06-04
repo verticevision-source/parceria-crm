@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send } from 'lucide-react'
-import { contactsApi, whatsappApi, templatesApi } from '../services/api'
+import { Plus, Search, Phone, MapPin, Edit2, Trash2, User, MessageSquare, Send, Upload, FileSpreadsheet, Download, X, Loader2, CheckCircle } from 'lucide-react'
+import * as XLSX from 'xlsx'
+import { contactsApi, whatsappApi, templatesApi, usersApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
-import { Contact } from '../types'
+import { Contact, User as UserType } from '../types'
 import Avatar from '../components/UI/Avatar'
 import { fileToAvatarDataUrl } from '../utils/image'
 
@@ -27,7 +28,7 @@ const emptyForm = { name: '', phone: '', city: '', documentNumber: '', notes: ''
 
 export default function Contacts() {
   const navigate = useNavigate()
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [contacts, setContacts] = useState<Contact[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -35,6 +36,14 @@ export default function Contacts() {
   const [editing, setEditing] = useState<Contact | null>(null)
   const [form, setForm] = useState(emptyForm)
   const [saving, setSaving] = useState(false)
+
+  // Importação de planilha (admin)
+  const [showImport, setShowImport] = useState(false)
+  const [importRows, setImportRows] = useState<Array<{ name: string; phone: string; city?: string; documentNumber?: string; notes?: string }>>([])
+  const [importing, setImporting] = useState(false)
+  const [importFileName, setImportFileName] = useState('')
+  const [importUsers, setImportUsers] = useState<UserType[]>([])
+  const [importTarget, setImportTarget] = useState('')
 
   // Iniciar conversa
   const [chatContact, setChatContact] = useState<Contact | null>(null)
@@ -151,6 +160,75 @@ export default function Contacts() {
     }
   }
 
+  // ── Importação de planilha ────────────────────────────────────────────────
+  const openImport = () => {
+    setImportRows([]); setImportFileName(''); setImportTarget('')
+    setShowImport(true)
+    usersApi.findAll().then((r) => setImportUsers(r.data.data.filter((u: UserType) => u.isActive))).catch(() => {})
+  }
+
+  // Acha o valor de uma coluna por nomes alternativos (case-insensitive)
+  const pick = (row: Record<string, any>, keys: string[]): string => {
+    const lower: Record<string, any> = {}
+    for (const k of Object.keys(row)) lower[k.trim().toLowerCase()] = row[k]
+    for (const key of keys) {
+      const v = lower[key]
+      if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim()
+    }
+    return ''
+  }
+
+  const parseFile = async (file: File) => {
+    try {
+      const buf = await file.arrayBuffer()
+      const wb = XLSX.read(new Uint8Array(buf), { type: 'array' })
+      const ws = wb.Sheets[wb.SheetNames[0]]
+      const json = XLSX.utils.sheet_to_json<Record<string, any>>(ws, { defval: '' })
+      const rows = json.map((r) => ({
+        name: pick(r, ['nome', 'name', 'contato', 'cliente']),
+        phone: pick(r, ['telefone', 'phone', 'celular', 'whatsapp', 'fone', 'numero', 'número', 'tel']),
+        city: pick(r, ['cidade', 'city']),
+        documentNumber: pick(r, ['cpf', 'documento', 'document', 'cnpj']),
+        notes: pick(r, ['observacao', 'observação', 'obs', 'notes', 'anotacao', 'anotação']),
+      })).filter((r) => r.phone)  // precisa ter telefone
+      if (rows.length === 0) {
+        toast.error('Nenhum telefone encontrado. A planilha precisa de uma coluna "telefone" (ou phone/celular/whatsapp).')
+        return
+      }
+      setImportRows(rows)
+      setImportFileName(file.name)
+      toast.success(`${rows.length} contato(s) lido(s) da planilha`)
+    } catch {
+      toast.error('Não consegui ler o arquivo. Use .xlsx, .xls ou .csv')
+    }
+  }
+
+  const doImport = async () => {
+    if (importRows.length === 0) return
+    setImporting(true)
+    try {
+      const res = await contactsApi.import(importRows, importTarget || undefined)
+      const { created, skipped, invalid } = res.data.data
+      toast.success(`Importado! ${created} criados, ${skipped} já existiam, ${invalid} inválidos`)
+      setShowImport(false)
+      load()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao importar'
+      toast.error(msg)
+    } finally { setImporting(false) }
+  }
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['nome', 'telefone', 'cidade', 'cpf', 'observacao'],
+      ['João da Silva', '5517999998888', 'Ribeirão Preto', '', 'Lead quente'],
+      ['Maria Souza', '17988887777', 'São Paulo', '', ''],
+    ])
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, 'Contatos')
+    XLSX.writeFile(wb, 'modelo_contatos.xlsx')
+  }
+
   if (loading) return <PageLoader />
 
   return (
@@ -161,10 +239,18 @@ export default function Contacts() {
           <h1 className="text-2xl font-bold text-text-primary">Contatos</h1>
           <p className="text-text-muted text-sm mt-1">{contacts.length} contato(s)</p>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          Novo Contato
-        </button>
+        <div className="flex gap-2">
+          {isAdmin && (
+            <button onClick={openImport} className="btn-ghost border border-border flex items-center gap-2">
+              <FileSpreadsheet size={16} className="text-success" />
+              Importar planilha
+            </button>
+          )}
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            Novo Contato
+          </button>
+        </div>
       </div>
 
       {/* Search */}
@@ -417,6 +503,68 @@ export default function Contacts() {
           </div>
         </div>
       </Modal>
+
+      {/* Modal importar planilha */}
+      {showImport && (
+        <div className="modal-overlay" onClick={() => setShowImport(false)}>
+          <div className="modal-panel max-w-2xl p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <FileSpreadsheet size={18} className="text-success" /> Importar contatos
+              </h3>
+              <button onClick={() => setShowImport(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              Envie uma planilha <b>.xlsx</b>, <b>.xls</b> ou <b>.csv</b>. Precisa ter as colunas <b>nome</b> e <b>telefone</b> (cidade, cpf e observação são opcionais).
+            </p>
+
+            <div className="flex items-center gap-2 mb-4">
+              <label className="btn-primary flex items-center gap-2 cursor-pointer">
+                <Upload size={16} /> Escolher planilha
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden"
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) parseFile(f) }} />
+              </label>
+              <button onClick={downloadTemplate} className="btn-ghost border border-border flex items-center gap-2 text-sm">
+                <Download size={15} /> Baixar modelo
+              </button>
+              {importFileName && <span className="text-xs text-text-muted truncate">{importFileName}</span>}
+            </div>
+
+            {importRows.length > 0 && (
+              <>
+                <div className="mb-3">
+                  <label className="text-sm text-text-muted">Atribuir os contatos a:</label>
+                  <select className="input-field w-full mt-1" value={importTarget} onChange={(e) => setImportTarget(e.target.value)}>
+                    <option value="">Eu (admin)</option>
+                    {importUsers.map((u) => <option key={u.id} value={u.id}>{u.name} ({u.role === 'ADMIN' ? 'Admin' : 'Atendente'})</option>)}
+                  </select>
+                </div>
+
+                <div className="rounded-xl border border-border overflow-hidden mb-4">
+                  <div className="px-3 py-2 bg-bg-tertiary text-xs font-semibold text-text-secondary flex items-center gap-2">
+                    <CheckCircle size={14} className="text-success" /> {importRows.length} contato(s) prontos — prévia dos 5 primeiros:
+                  </div>
+                  <div className="max-h-48 overflow-y-auto divide-y divide-border">
+                    {importRows.slice(0, 5).map((r, i) => (
+                      <div key={i} className="px-3 py-2 text-sm flex items-center justify-between gap-2">
+                        <span className="text-text-primary truncate">{r.name || '(sem nome)'}</span>
+                        <span className="text-text-muted font-mono text-xs flex-shrink-0">{r.phone}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            )}
+
+            <div className="flex gap-2">
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowImport(false)}>Cancelar</button>
+              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={doImport} disabled={importing || importRows.length === 0}>
+                {importing ? <><Loader2 size={16} className="animate-spin" /> Importando...</> : <><Upload size={16} /> Importar {importRows.length > 0 ? importRows.length : ''}</>}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

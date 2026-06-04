@@ -61,4 +61,19 @@ export class ContactController {
     await ContactService.delete(req.params.id, req.user!.userId, req.user!.role)
     res.json({ success: true, message: 'Contato removido' })
   }
+
+  /** Admin: importa contatos em massa (planilha) */
+  static async importMany(req: AuthRequest, res: Response): Promise<void> {
+    const { contacts, targetUserId } = req.body
+    if (!Array.isArray(contacts) || contacts.length === 0) {
+      res.status(400).json({ success: false, message: 'Nenhum contato para importar' })
+      return
+    }
+    if (contacts.length > 10000) {
+      res.status(400).json({ success: false, message: 'Máximo de 10.000 contatos por importação' })
+      return
+    }
+    const result = await ContactService.importMany(req.user!.userId, targetUserId, contacts)
+    res.json({ success: true, data: result })
+  }
 }

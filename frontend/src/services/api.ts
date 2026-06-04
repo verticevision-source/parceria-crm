@@ -124,6 +124,8 @@ export const conversationsApi = {
     api.patch(`/conversations/${id}/status`, { status }),
   markAsRead: (id: string) => api.patch(`/conversations/${id}/read`),
   setAiAuto: (id: string, enabled: boolean) => api.patch(`/conversations/${id}/ai-auto`, { enabled }),
+  remove: (id: string) => api.delete(`/conversations/${id}`),
+  clearAll: () => api.post('/conversations/clear-all'),
 }
 
 // Contacts
@@ -134,6 +136,8 @@ export const contactsApi = {
   create: (data: object) => api.post('/contacts', data),
   update: (id: string, data: object) => api.put(`/contacts/${id}`, data),
   delete: (id: string) => api.delete(`/contacts/${id}`),
+  import: (contacts: object[], targetUserId?: string) =>
+    api.post('/contacts/import', { contacts, targetUserId }),
 }
 
 // Leads

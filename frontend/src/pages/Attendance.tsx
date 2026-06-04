@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2
 } from 'lucide-react'
 import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api } from '../services/api'
 import { getSocket } from '../services/socket'
@@ -106,7 +106,7 @@ function ConversationItem({
 // Main
 // ─────────────────────────────────────────────
 export default function Attendance() {
-  const { user } = useAuth()
+  const { user, isAdmin } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -510,6 +510,32 @@ export default function Attendance() {
     inputRef.current?.focus()
   }
 
+  // Admin: excluir uma conversa
+  const deleteConversation = async (conv: Conversation) => {
+    if (!confirm(`Excluir a conversa de ${conv.contact?.name || conv.contact?.phone || ''} e todas as mensagens? Esta ação não pode ser desfeita.`)) return
+    try {
+      await conversationsApi.remove(conv.id)
+      toast.success('Conversa excluída')
+      setConversations((prev) => prev.filter((c) => c.id !== conv.id))
+      setSelected((prev) => (prev?.id === conv.id ? null : prev))
+    } catch {
+      toast.error('Erro ao excluir conversa')
+    }
+  }
+
+  // Admin: limpar TODAS as conversas
+  const clearAllConversations = async () => {
+    if (!confirm('Excluir TODAS as conversas e mensagens do sistema? Esta ação não pode ser desfeita.')) return
+    try {
+      const res = await conversationsApi.clearAll()
+      toast.success(res.data.message || 'Conversas limpas')
+      setConversations([])
+      setSelected(null)
+    } catch {
+      toast.error('Erro ao limpar conversas')
+    }
+  }
+
   const filtered = conversations.filter((c) => {
     const name = (c.contact?.name || c.contact?.phone || '').toLowerCase()
     return name.includes(search.toLowerCase())
@@ -527,19 +553,30 @@ export default function Attendance() {
         <div className="p-4 border-b border-border">
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-text-primary font-semibold">Atendimento</h2>
-            <button
-              onClick={handleRouletteToggle}
-              disabled={rouletteToggling}
-              title={rouletteActive ? 'Sair da roleta de leads' : 'Entrar na roleta de leads'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
-                rouletteActive
-                  ? 'bg-green-500 hover:bg-green-600 text-white'
-                  : 'bg-bg-tertiary hover:bg-bg-secondary text-text-muted hover:text-text-primary border border-border'
-              }`}
-            >
-              <Shuffle size={12} className={rouletteToggling ? 'animate-spin' : ''} />
-              {rouletteActive ? 'Na Roleta' : 'Fora da Roleta'}
-            </button>
+            <div className="flex items-center gap-1.5">
+              {isAdmin && (
+                <button
+                  onClick={clearAllConversations}
+                  title="Limpar todas as conversas (admin)"
+                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-bg-tertiary hover:bg-danger/10 text-text-muted hover:text-danger border border-border transition-colors"
+                >
+                  <Trash2 size={12} /> Limpar
+                </button>
+              )}
+              <button
+                onClick={handleRouletteToggle}
+                disabled={rouletteToggling}
+                title={rouletteActive ? 'Sair da roleta de leads' : 'Entrar na roleta de leads'}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  rouletteActive
+                    ? 'bg-green-500 hover:bg-green-600 text-white'
+                    : 'bg-bg-tertiary hover:bg-bg-secondary text-text-muted hover:text-text-primary border border-border'
+                }`}
+              >
+                <Shuffle size={12} className={rouletteToggling ? 'animate-spin' : ''} />
+                {rouletteActive ? 'Na Roleta' : 'Fora da Roleta'}
+              </button>
+            </div>
           </div>
           <div className="relative">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
@@ -657,6 +694,12 @@ export default function Attendance() {
                     <X size={16} />
                   </button>
                 </div>
+                {isAdmin && (
+                  <button onClick={() => deleteConversation(selected)} title="Excluir conversa (admin)"
+                    className="p-1.5 rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors border-l border-border ml-1 pl-2">
+                    <Trash2 size={16} />
+                  </button>
+                )}
               </div>
             </div>
 
