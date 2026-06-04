@@ -110,6 +110,8 @@ export const whatsappApi = {
     api.post('/whatsapp/send-audio', { to, audio: audioBase64, mimetype }),
   sendLocation: (to: string, latitude: number, longitude: number, name?: string) =>
     api.post('/whatsapp/send-location', { to, latitude, longitude, name }),
+  sendLocationQuery: (to: string, query: string) =>
+    api.post('/whatsapp/send-location', { to, query }),
   adminConnect: (userId: string) => api.post('/whatsapp/admin/connect', { userId }),
   adminDisconnect: (sessionId: string) => api.post(`/whatsapp/admin/disconnect/${sessionId}`),
 }

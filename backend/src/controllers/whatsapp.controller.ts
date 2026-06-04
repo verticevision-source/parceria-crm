@@ -139,14 +139,64 @@ export class WhatsAppController {
 
   // Send location
   static async sendLocation(req: AuthRequest, res: Response): Promise<void> {
-    const { to, latitude, longitude, name } = req.body
-    if (!to || latitude == null || longitude == null) {
-      res.status(400).json({ success: false, message: 'to, latitude e longitude são obrigatórios' })
+    const { to, latitude, longitude, name, query } = req.body
+    let lat = latitude, lng = longitude
+
+    // Se não veio coordenada mas veio um link/texto, resolve (inclui links curtos)
+    if ((lat == null || lng == null) && query) {
+      const resolved = await resolveLocationQuery(String(query))
+      if (!resolved) {
+        res.status(400).json({ success: false, message: 'Não consegui extrair a localização desse link. Cole as coordenadas (ex: -21.1767, -47.8208) ou um link do Google Maps com a localização aberta.' })
+        return
+      }
+      lat = resolved.lat; lng = resolved.lng
+    }
+
+    if (!to || lat == null || lng == null) {
+      res.status(400).json({ success: false, message: 'Informe as coordenadas ou um link de localização' })
       return
     }
     const message = await WhatsAppService.sendLocation(
-      req.user!.userId, to, Number(latitude), Number(longitude), name
+      req.user!.userId, to, Number(lat), Number(lng), name
     )
     res.json({ success: true, data: message })
+  }
+}
+
+/** Extrai lat/lng de um texto/link do Google Maps (segue links curtos) */
+async function resolveLocationQuery(text: string): Promise<{ lat: number; lng: number } | null> {
+  const parse = (s: string): { lat: number; lng: number } | null => {
+    const pats = [
+      /@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
+      /!3d(-?\d{1,3}\.\d+)!4d(-?\d{1,3}\.\d+)/,
+      /[?&]q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
+      /[?&]ll=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
+      /[?&](?:destination|center)=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,
+      /(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/,
+    ]
+    for (const re of pats) {
+      const m = s.match(re)
+      if (m) {
+        const la = parseFloat(m[1]), lo = parseFloat(m[2])
+        if (Math.abs(la) <= 90 && Math.abs(lo) <= 180) return { lat: la, lng: lo }
+      }
+    }
+    return null
+  }
+
+  const direct = parse(text)
+  if (direct) return direct
+
+  const linkMatch = text.match(/https?:\/\/\S+/)
+  if (!linkMatch) return null
+
+  try {
+    const r = await fetch(linkMatch[0], { redirect: 'follow', headers: { 'User-Agent': 'Mozilla/5.0' } })
+    const fromUrl = parse(r.url)
+    if (fromUrl) return fromUrl
+    const body = await r.text().catch(() => '')
+    return parse(body)
+  } catch {
+    return null
   }
 }

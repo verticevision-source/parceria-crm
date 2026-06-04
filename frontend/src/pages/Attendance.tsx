@@ -406,13 +406,28 @@ export default function Attendance() {
     }
   }
 
-  const sendLocationFromInput = () => {
-    const coords = parseLatLng(locInput)
-    if (!coords) {
-      toast.error('Cole um link do Google Maps ou coordenadas (ex: -21.1767, -47.8208)')
+  const sendLocationFromInput = async () => {
+    if (!selected?.contact?.phone || !locInput.trim()) {
+      toast.error('Cole um link do Google Maps ou coordenadas')
       return
     }
-    sendLocationCoords(coords.lat, coords.lng)
+    const coords = parseLatLng(locInput)
+    setSending(true)
+    try {
+      if (coords) {
+        await whatsappApi.sendLocation(selected.contact.phone, coords.lat, coords.lng)
+      } else {
+        // Não deu pra extrair no navegador (ex: link curto) — backend resolve
+        await whatsappApi.sendLocationQuery(selected.contact.phone, locInput.trim())
+      }
+      toast.success('Localização enviada!')
+      setShowLocation(false)
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Não consegui enviar a localização'
+      toast.error(msg)
+    } finally {
+      setSending(false)
+    }
   }
 
   const useCurrentLocation = () => {
@@ -1041,7 +1056,7 @@ export default function Attendance() {
                     <button
                       onClick={sendMessage}
                       disabled={sending}
-                      className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
+                      className="btn-primary !p-0 rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
                       title="Enviar mensagem"
                     >
                       {sending ? (
@@ -1054,7 +1069,7 @@ export default function Attendance() {
                     <button
                       onClick={startRecording}
                       disabled={sending}
-                      className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
+                      className="btn-primary !p-0 rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
                       title="Gravar áudio"
                     >
                       <Mic size={28} strokeWidth={2.4} />
