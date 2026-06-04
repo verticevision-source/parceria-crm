@@ -1,60 +1,129 @@
-import { useState, useEffect } from 'react'
-import { numbersApi } from '../services/api'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { whatsappApi, usersApi } from '../services/api'
+import { getSocket } from '../services/socket'
+import { WhatsAppSession, User, SessionStatus } from '../types'
 import toast from 'react-hot-toast'
 import {
-  Smartphone, Plus, Trash2, Star, CheckCircle, Zap, X, Info, Phone, ShieldCheck
+  Smartphone, Plus, Trash2, CheckCircle, X, Phone, Loader2, QrCode, RefreshCw, User as UserIcon
 } from 'lucide-react'
 
-interface WNumber {
-  id: string; label: string; phoneNumberId: string
-  displayNumber?: string; verifiedName?: string; wabaId?: string
-  isActive: boolean; isDefault: boolean; tokenMasked?: string | null
+type SessionWithUser = WhatsAppSession & { user?: { id: string; name: string; email: string } }
+
+const STATUS_LABEL: Record<SessionStatus, string> = {
+  CONNECTED: 'Conectado',
+  WAITING_QR: 'Aguardando QR',
+  DISCONNECTED: 'Desconectado',
+  ERROR: 'Erro',
 }
 
 export default function AdminWhatsApp() {
-  const [numbers, setNumbers] = useState<WNumber[]>([])
+  const [sessions, setSessions] = useState<SessionWithUser[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAdd, setShowAdd] = useState(false)
-  const [showOneClick, setShowOneClick] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [form, setForm] = useState({ label: '', phoneNumberId: '', token: '', wabaId: '' })
 
-  useEffect(() => { load() }, [])
+  // Fluxo de conexão (QR)
+  const [showPicker, setShowPicker] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState('')
+  const [connecting, setConnecting] = useState(false)
+  const [qrSession, setQrSession] = useState<{ id: string; userName: string; qrCode?: string } | null>(null)
 
-  async function load() {
-    setLoading(true)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  const loadSessions = useCallback(async () => {
     try {
-      const res = await numbersApi.list()
-      setNumbers(res.data.data)
-    } catch { toast.error('Erro ao carregar números') }
-    finally { setLoading(false) }
-  }
-
-  async function addNumber() {
-    if (!form.label || !form.phoneNumberId || !form.token) {
-      toast.error('Preencha apelido, Phone Number ID e token'); return
+      const res = await whatsappApi.getAllSessions()
+      setSessions(res.data.data)
+      return res.data.data as SessionWithUser[]
+    } catch {
+      toast.error('Erro ao carregar conexões')
+      return [] as SessionWithUser[]
     }
-    setSaving(true)
+  }, [])
+
+  async function loadUsers() {
     try {
-      const res = await numbersApi.add(form)
-      toast.success(`Número ${res.data.data.displayNumber || ''} conectado!`)
-      setShowAdd(false)
-      setForm({ label: '', phoneNumberId: '', token: '', wabaId: '' })
-      load()
-    } catch (e: any) {
-      toast.error(e?.response?.data?.message || 'Erro ao adicionar número')
-    } finally { setSaving(false) }
+      const res = await usersApi.findAll()
+      setUsers(res.data.data.filter((u: User) => u.isActive))
+    } catch { /* silencioso */ }
   }
 
-  async function setDefault(id: string) {
-    try { await numbersApi.setDefault(id); toast.success('Número padrão atualizado'); load() }
-    catch { toast.error('Erro') }
+  useEffect(() => {
+    Promise.all([loadSessions(), loadUsers()]).finally(() => setLoading(false))
+  }, [loadSessions])
+
+  // Socket: conexão concluída
+  useEffect(() => {
+    const socket = getSocket()
+    const onStatus = (data: { sessionId: string; status: SessionStatus }) => {
+      if (data.status === 'CONNECTED') {
+        loadSessions()
+        setQrSession((cur) => {
+          if (cur && cur.id === data.sessionId) {
+            toast.success('Número conectado com sucesso! 🎉')
+            return null
+          }
+          return cur
+        })
+      }
+    }
+    socket.on('whatsapp-status', onStatus)
+    return () => { socket.off('whatsapp-status', onStatus) }
+  }, [loadSessions])
+
+  // Polling enquanto o QR está aberto: atualiza QR e detecta conexão
+  useEffect(() => {
+    if (!qrSession) {
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null }
+      return
+    }
+    pollRef.current = setInterval(async () => {
+      const list = await loadSessions()
+      const s = list.find((x) => x.id === qrSession.id)
+      if (!s) return
+      if (s.status === 'CONNECTED') {
+        toast.success('Número conectado com sucesso! 🎉')
+        setQrSession(null)
+        return
+      }
+      if (s.qrCode && s.qrCode !== qrSession.qrCode) {
+        setQrSession((cur) => cur ? { ...cur, qrCode: s.qrCode } : cur)
+      }
+    }, 4000)
+    return () => { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null } }
+  }, [qrSession, loadSessions])
+
+  async function startConnect() {
+    if (!selectedUserId) { toast.error('Escolha um atendente para vincular o número'); return }
+    setConnecting(true)
+    try {
+      const res = await whatsappApi.adminConnect(selectedUserId)
+      const data = res.data.data as { session: WhatsAppSession; status: { qrCode?: string } }
+      const userName = users.find((u) => u.id === selectedUserId)?.name || 'Atendente'
+      setShowPicker(false)
+      setSelectedUserId('')
+      setQrSession({ id: data.session.id, userName, qrCode: data.status?.qrCode })
+      loadSessions()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao iniciar conexão')
+    } finally { setConnecting(false) }
   }
-  async function remove(id: string) {
-    if (!confirm('Remover este número?')) return
-    try { await numbersApi.remove(id); toast.success('Número removido'); load() }
-    catch { toast.error('Erro') }
+
+  async function remove(s: SessionWithUser) {
+    if (!confirm(`Desconectar/remover o número de ${s.user?.name || 'usuário'}?`)) return
+    try {
+      await whatsappApi.adminDisconnect(s.id)
+      toast.success('Número desconectado')
+      loadSessions()
+    } catch { toast.error('Erro ao remover') }
   }
+
+  async function reconnect(s: SessionWithUser) {
+    // Reabre o QR de uma sessão existente que está aguardando
+    setQrSession({ id: s.id, userName: s.user?.name || 'Atendente', qrCode: s.qrCode })
+    loadSessions()
+  }
+
+  const activeSessions = sessions.filter((s) => s.status !== 'DISCONNECTED')
 
   return (
     <div className="p-4 md:p-6 max-w-4xl mx-auto space-y-6">
@@ -63,131 +132,128 @@ export default function AdminWhatsApp() {
           <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
             <Smartphone size={22} className="text-primary" /> Central de Números
           </h1>
-          <p className="text-sm text-text-muted mt-0.5">Conecte e gerencie os números de WhatsApp da operação</p>
+          <p className="text-sm text-text-muted mt-0.5">Conecte números de WhatsApp via QR Code (Evolution)</p>
         </div>
-        <div className="flex gap-2">
-          <button onClick={() => setShowOneClick(true)}
-            className="btn-ghost border border-border flex items-center gap-2 text-sm">
-            <Zap size={15} className="text-gold" /> Conectar com 1 clique
-          </button>
-          <button onClick={() => setShowAdd(true)} className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Adicionar número
-          </button>
-        </div>
+        <button onClick={() => { setShowPicker(true); loadUsers() }} className="btn-primary flex items-center gap-2">
+          <Plus size={16} /> Conectar número
+        </button>
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-12"><div className="animate-spin rounded-full h-8 w-8 border-2 border-primary border-t-transparent" /></div>
-      ) : numbers.length === 0 ? (
+        <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary" size={28} /></div>
+      ) : activeSessions.length === 0 ? (
         <div className="card p-12 text-center text-text-muted">
-          <Smartphone size={40} className="mx-auto mb-3 opacity-30" />
+          <QrCode size={40} className="mx-auto mb-3 opacity-30" />
           <p className="mb-1">Nenhum número conectado ainda</p>
-          <p className="text-xs">Adicione o primeiro número para começar a atender</p>
+          <p className="text-xs">Clique em "Conectar número", escolha o atendente e escaneie o QR Code</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {numbers.map((n) => (
-            <div key={n.id} className="card p-4 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="w-10 h-10 rounded-xl bg-success/15 flex items-center justify-center flex-shrink-0">
-                  <Phone size={18} className="text-success" />
-                </div>
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <p className="font-semibold text-text-primary truncate">{n.label}</p>
-                    {n.isDefault && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold/15 text-gold font-bold flex items-center gap-0.5">
-                        <Star size={9} /> PADRÃO
-                      </span>
-                    )}
+          {activeSessions.map((s) => {
+            const connected = s.status === 'CONNECTED'
+            const waiting = s.status === 'WAITING_QR'
+            return (
+              <div key={s.id} className="card p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 ${connected ? 'bg-success/15' : 'bg-warning/15'}`}>
+                    <Phone size={18} className={connected ? 'text-success' : 'text-warning'} />
                   </div>
-                  <p className="text-xs text-text-muted">
-                    {n.displayNumber || n.phoneNumberId}{n.verifiedName ? ` · ${n.verifiedName}` : ''}
-                  </p>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="font-semibold text-text-primary truncate flex items-center gap-1.5">
+                        <UserIcon size={13} className="text-text-muted" />
+                        {s.user?.name || 'Sem usuário'}
+                      </p>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${connected ? 'bg-success/15 text-success' : 'bg-warning/15 text-warning'}`}>
+                        {STATUS_LABEL[s.status]}
+                      </span>
+                    </div>
+                    <p className="text-xs text-text-muted">
+                      {s.phoneNumber ? `+${s.phoneNumber}` : (waiting ? 'Escaneie o QR para conectar' : '—')}
+                      {s.provider ? ` · ${s.provider}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  {waiting && (
+                    <button onClick={() => reconnect(s)} className="text-xs px-2 py-1 rounded-lg text-text-muted hover:text-primary hover:bg-primary/10 flex items-center gap-1" title="Mostrar QR">
+                      <QrCode size={14} /> Ver QR
+                    </button>
+                  )}
+                  <button onClick={() => remove(s)} className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10" title="Desconectar">
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                {!n.isDefault && (
-                  <button onClick={() => setDefault(n.id)} className="text-xs px-2 py-1 rounded-lg text-text-muted hover:text-gold hover:bg-gold/10" title="Tornar padrão">
-                    <Star size={14} />
-                  </button>
-                )}
-                <button onClick={() => remove(n.id)} className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10" title="Remover">
-                  <Trash2 size={14} />
-                </button>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
 
-      {/* Modal adicionar manual */}
-      {showAdd && (
-        <div className="modal-overlay" onClick={() => setShowAdd(false)}>
+      {/* Modal: escolher atendente */}
+      {showPicker && (
+        <div className="modal-overlay" onClick={() => setShowPicker(false)}>
           <div className="modal-panel max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="font-bold text-text-primary mb-1 flex items-center gap-2">
-              <Plus size={18} className="text-primary" /> Adicionar número
-            </h3>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <Plus size={18} className="text-primary" /> Conectar número
+              </h3>
+              <button onClick={() => setShowPicker(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
             <p className="text-xs text-text-muted mb-4">
-              Pegue o <b>Phone Number ID</b> e o <b>token</b> no painel da Meta (WhatsApp → Configuração da API).
+              Escolha o atendente que vai ser dono deste número. Em seguida você escaneia o QR Code com o WhatsApp.
             </p>
-            <div className="space-y-3">
-              <div>
-                <label className="text-sm text-text-muted">Apelido *</label>
-                <input className="input w-full mt-1" placeholder="Ex: Vendas SP, Suporte..."
-                  value={form.label} onChange={(e) => setForm(p => ({ ...p, label: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm text-text-muted">Phone Number ID *</label>
-                <input className="input w-full mt-1 font-mono text-sm" placeholder="Ex: 101234567890123"
-                  value={form.phoneNumberId} onChange={(e) => setForm(p => ({ ...p, phoneNumberId: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm text-text-muted">Token de acesso *</label>
-                <input type="password" className="input w-full mt-1 font-mono text-sm" placeholder="EAA..."
-                  value={form.token} onChange={(e) => setForm(p => ({ ...p, token: e.target.value }))} />
-              </div>
-              <div>
-                <label className="text-sm text-text-muted">WhatsApp Business Account ID (opcional)</label>
-                <input className="input w-full mt-1 font-mono text-sm" placeholder="Para assinar o webhook automaticamente"
-                  value={form.wabaId} onChange={(e) => setForm(p => ({ ...p, wabaId: e.target.value }))} />
-              </div>
+            <div>
+              <label className="text-sm text-text-muted">Atendente / dono do número *</label>
+              <select className="input w-full mt-1" value={selectedUserId} onChange={(e) => setSelectedUserId(e.target.value)}>
+                <option value="">Selecione...</option>
+                {users.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name} ({u.role === 'ADMIN' ? 'Admin' : 'Atendente'})</option>
+                ))}
+              </select>
             </div>
             <div className="flex gap-2 mt-5">
-              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={addNumber} disabled={saving}>
-                <CheckCircle size={16} /> {saving ? 'Validando...' : 'Conectar número'}
+              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={startConnect} disabled={connecting}>
+                {connecting ? <><Loader2 size={16} className="animate-spin" /> Gerando QR...</> : <><QrCode size={16} /> Gerar QR Code</>}
               </button>
-              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowAdd(false)}>Cancelar</button>
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowPicker(false)}>Cancelar</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal 1-clique (explicativo) */}
-      {showOneClick && (
-        <div className="modal-overlay" onClick={() => setShowOneClick(false)}>
-          <div className="modal-panel max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+      {/* Modal: QR Code */}
+      {qrSession && (
+        <div className="modal-overlay" onClick={() => setQrSession(null)}>
+          <div className="modal-panel max-w-md p-6 text-center" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-bold text-text-primary flex items-center gap-2">
-                <Zap size={18} className="text-gold" /> Conectar com 1 clique
+                <QrCode size={18} className="text-primary" /> Escaneie o QR Code
               </h3>
-              <button onClick={() => setShowOneClick(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+              <button onClick={() => setQrSession(null)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
             </div>
-            <div className="space-y-3 text-sm text-text-secondary">
-              <div className="flex items-start gap-2 p-3 rounded-xl bg-bg-tertiary">
-                <Info size={16} className="text-primary flex-shrink-0 mt-0.5" />
-                <p>A conexão automática (Embedded Signup da Meta) deixa você plugar números de clientes em segundos, sem copiar token. Já está preparada no sistema, mas a Meta só a libera após um passo obrigatório:</p>
-              </div>
-              <div className="flex items-start gap-2">
-                <ShieldCheck size={16} className="text-success flex-shrink-0 mt-0.5" />
-                <p><b>Verificação de Negócio</b> no Meta Business: envie CNPJ + um comprovante (contrato social ou conta no nome da empresa). A Meta aprova em 1–5 dias.</p>
-              </div>
-              <p className="text-text-muted text-xs">
-                Assim que sua empresa for verificada, ativamos o botão de 1 clique aqui. Por enquanto, use "Adicionar número" — funciona perfeitamente (só pede o ID e o token uma vez por número).
-              </p>
+            <p className="text-xs text-text-muted mb-4">
+              Número de <b className="text-text-secondary">{qrSession.userName}</b> · No celular: WhatsApp → <b>Dispositivos conectados</b> → <b>Conectar dispositivo</b>
+            </p>
+
+            <div className="bg-white rounded-2xl p-4 inline-block mx-auto">
+              {qrSession.qrCode ? (
+                <img src={qrSession.qrCode} alt="QR Code WhatsApp" className="w-60 h-60 object-contain" />
+              ) : (
+                <div className="w-60 h-60 flex flex-col items-center justify-center text-gray-400">
+                  <Loader2 size={32} className="animate-spin mb-2" />
+                  <span className="text-xs">Gerando QR...</span>
+                </div>
+              )}
             </div>
-            <button className="btn-primary w-full mt-4" onClick={() => { setShowOneClick(false); setShowAdd(true) }}>
-              Adicionar número manualmente
+
+            <div className="mt-4 flex items-center justify-center gap-2 text-xs text-text-muted">
+              <RefreshCw size={12} className="animate-spin" style={{ animationDuration: '3s' }} />
+              O QR renova sozinho. Aguardando você escanear...
+            </div>
+
+            <button className="btn-ghost w-full mt-4 border border-border" onClick={() => setQrSession(null)}>
+              Fechar
             </button>
           </div>
         </div>
