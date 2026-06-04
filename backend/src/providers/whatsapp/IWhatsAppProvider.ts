@@ -42,6 +42,8 @@ export interface IWhatsAppProvider {
   sendFile?(sessionId: string, to: string, file: SendFilePayload): Promise<SendMessageResult>
   sendAudio?(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult>
   sendLocation?(sessionId: string, to: string, latitude: number, longitude: number, name?: string, address?: string): Promise<SendMessageResult>
+  /** Busca a URL da foto de perfil do WhatsApp de um número (opcional) */
+  getProfilePicUrl?(sessionId: string, number: string): Promise<string | null>
   onMessageReceived(callback: (sessionId: string, message: IncomingMessage) => void): void
   onStatusChanged(callback: (status: ConnectionStatus) => void): void
 }

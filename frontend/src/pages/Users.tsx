@@ -267,21 +267,19 @@ export default function Users() {
         title={editing ? 'Editar Usuário' : 'Novo Usuário'}
       >
         <div className="space-y-4">
-          {editing && (
-            <div className="flex items-center gap-4">
-              <Avatar src={form.avatarUrl} name={form.name} size={56} />
-              <label className="btn-ghost border border-border text-sm cursor-pointer inline-flex items-center gap-2">
-                {form.avatarUrl ? 'Trocar foto' : 'Adicionar foto'}
-                <input type="file" accept="image/*" className="hidden"
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0]; if (!file) return
-                    try { const url = await fileToAvatarDataUrl(file); setForm((f) => ({ ...f, avatarUrl: url })) }
-                    catch { toast.error('Erro ao carregar imagem') }
-                  }} />
-              </label>
-              {form.avatarUrl && <button onClick={() => setForm({ ...form, avatarUrl: '' })} className="text-xs text-danger hover:underline">Remover</button>}
-            </div>
-          )}
+          <div className="flex items-center gap-4">
+            <Avatar src={form.avatarUrl} name={form.name} size={56} />
+            <label className="btn-ghost border border-border text-sm cursor-pointer inline-flex items-center gap-2">
+              {form.avatarUrl ? 'Trocar foto' : 'Adicionar foto'}
+              <input type="file" accept="image/*" className="hidden"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0]; if (!file) return
+                  try { const url = await fileToAvatarDataUrl(file); setForm((f) => ({ ...f, avatarUrl: url })) }
+                  catch { toast.error('Erro ao carregar imagem') }
+                }} />
+            </label>
+            {form.avatarUrl && <button onClick={() => setForm({ ...form, avatarUrl: '' })} className="text-xs text-danger hover:underline">Remover</button>}
+          </div>
           <div>
             <label className="block text-sm font-medium text-text-secondary mb-2">Nome *</label>
             <input

@@ -977,11 +977,11 @@ export default function Attendance() {
                         sendMessage()
                       }
                     }}
-                    placeholder="Digite uma mensagem... (Shift+Enter para nova linha)"
-                    className="input-field flex-1 resize-none min-h-[52px] max-h-44 py-3 px-4 text-base leading-relaxed"
+                    placeholder="Digite uma mensagem..."
+                    className="input-field flex-1 resize-none min-h-[48px] max-h-44 py-3 px-4 text-base"
                     rows={1}
                     disabled={sending}
-                    style={{ height: 'auto' }}
+                    style={{ height: 'auto', lineHeight: '1.5' }}
                     onInput={(e) => {
                       const t = e.target as HTMLTextAreaElement
                       t.style.height = 'auto'
@@ -1000,7 +1000,7 @@ export default function Attendance() {
                       {sending ? (
                         <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       ) : (
-                        <Send size={20} />
+                        <Send size={24} />
                       )}
                     </button>
                   ) : (
@@ -1010,7 +1010,7 @@ export default function Attendance() {
                       className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
                       title="Gravar áudio"
                     >
-                      <Mic size={20} />
+                      <Mic size={26} />
                     </button>
                   )}
                 </div>

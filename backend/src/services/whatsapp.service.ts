@@ -104,6 +104,14 @@ function setupMessageListener(): void {
         }
       }
 
+      // Foto de perfil do WhatsApp — preenche se o contato ainda não tem (1ª vez)
+      if (!contact.avatarUrl && typeof (provider as any).getProfilePicUrl === 'function') {
+        try {
+          const pic = await (provider as any).getProfilePicUrl(session.id, contact.phone)
+          if (pic) contact = await prisma.contact.update({ where: { id: contact.id }, data: { avatarUrl: pic } })
+        } catch { /* ignora falha de foto */ }
+      }
+
       // Conversa única por contato
       let conversation = await prisma.conversation.findFirst({
         where: { contactId: contact.id },

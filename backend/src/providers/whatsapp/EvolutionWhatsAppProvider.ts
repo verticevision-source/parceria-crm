@@ -252,6 +252,23 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     }
   }
 
+  /** Busca a URL da foto de perfil do WhatsApp de um número */
+  async getProfilePicUrl(sessionId: string, number: string): Promise<string | null> {
+    const num = this.normalizeNumber(number)
+    try {
+      const data = await this.req<any>('POST', `/chat/fetchProfilePictureUrl/${sessionId}`, { number: num })
+      return data?.profilePictureUrl || data?.profilePicUrl || null
+    } catch {
+      // Tenta com sufixo @lid se o número puro falhar
+      try {
+        const data = await this.req<any>('POST', `/chat/fetchProfilePictureUrl/${sessionId}`, { number: `${num}@lid` })
+        return data?.profilePictureUrl || data?.profilePicUrl || null
+      } catch {
+        return null
+      }
+    }
+  }
+
   // ── Callbacks ─────────────────────────────────────────────────────────────
 
   onMessageReceived(callback: (sessionId: string, message: IncomingMessage) => void): void {
