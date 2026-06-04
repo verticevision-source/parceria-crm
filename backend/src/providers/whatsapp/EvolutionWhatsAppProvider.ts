@@ -317,15 +317,25 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
           .replace(/@s\.whatsapp\.net$/, '')
           .replace(/@c\.us$/, '')
 
-        const type = this.detectType(msg.message)
-        const mediaUrl = this.extractMediaBase64(msg.message)
+        // Desembrulha mensagem efêmera (some depois) se houver
+        const inner = msg.message?.ephemeralMessage?.message || msg.message
+        const type = this.detectType(inner)
+        const mediaUrl = this.extractMediaBase64(inner)
+
+        // Localização recebida (pino do mapa)
+        const loc = inner?.locationMessage || inner?.liveLocationMessage
+        const latitude = loc?.degreesLatitude
+        const longitude = loc?.degreesLongitude
 
         const incoming: IncomingMessage = {
           externalId: msg.key?.id || `evo_${Date.now()}`,
           from,
-          body: this.extractText(msg.message),
+          senderName: msg.pushName || undefined,
+          body: loc ? (loc.name || loc.address || '') : this.extractText(inner),
           type,
           mediaUrl,
+          latitude: typeof latitude === 'number' ? latitude : undefined,
+          longitude: typeof longitude === 'number' ? longitude : undefined,
           timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
         }
 
@@ -400,6 +410,7 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   private detectType(message: any): IncomingMessage['type'] {
     if (!message) return 'TEXT'
+    if (message.locationMessage || message.liveLocationMessage) return 'LOCATION'
     if (message.imageMessage || message.stickerMessage) return 'IMAGE'
     if (message.audioMessage || message.pttMessage) return 'AUDIO'
     if (message.documentMessage) return 'DOCUMENT'
