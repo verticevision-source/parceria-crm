@@ -129,6 +129,7 @@ export default function Attendance() {
   // Chat extras
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showQuickReplies, setShowQuickReplies] = useState(false)
+  const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [qrSearch, setQrSearch] = useState('')
 
@@ -259,6 +260,9 @@ export default function Attendance() {
       }
       if (!target.closest('[data-qr-picker]') && !target.closest('[data-qr-btn]')) {
         setShowQuickReplies(false)
+      }
+      if (!target.closest('[data-attach-menu]') && !target.closest('[data-attach-btn]')) {
+        setShowAttachMenu(false)
       }
     }
     document.addEventListener('mousedown', handler)
@@ -848,66 +852,74 @@ export default function Attendance() {
                 }}
               />
 
-              {/* Input row */}
+              {/* Input row — estilo WhatsApp */}
               {!recording && (
                 <div className="flex items-end gap-2">
-                  {/* Emoji button */}
+                  {/* Emoji */}
                   <button
                     data-emoji-btn
-                    onClick={() => { setShowEmojiPicker((v) => !v); setShowQuickReplies(false) }}
+                    onClick={() => { setShowEmojiPicker((v) => !v); setShowQuickReplies(false); setShowAttachMenu(false) }}
                     className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
                       showEmojiPicker ? 'bg-primary/20 text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
                     }`}
                     title="Emoji"
                   >
-                    <Smile size={20} />
+                    <Smile size={22} />
                   </button>
 
-                  {/* Quick replies */}
-                  <button
-                    data-qr-btn
-                    onClick={() => { setShowQuickReplies((v) => !v); setShowEmojiPicker(false); setQrSearch('') }}
-                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
-                      showQuickReplies ? 'bg-gold/20 text-gold' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
-                    }`}
-                    title="Respostas rápidas"
-                  >
-                    <Zap size={20} />
-                  </button>
-
-                  {/* File attach */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={sending}
-                    className="p-2.5 rounded-xl text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
-                    title="Enviar arquivo"
-                  >
-                    <Paperclip size={20} />
-                  </button>
-
-                  {/* Location */}
-                  <button
-                    onClick={sendLocation}
-                    disabled={sending}
-                    className="p-2.5 rounded-xl text-text-muted hover:text-text-secondary hover:bg-bg-hover transition-colors flex-shrink-0"
-                    title="Enviar localização atual"
-                  >
-                    <MapPin size={20} />
-                  </button>
-
-                  {/* Sugerir IA */}
-                  {aiAllowed && (
+                  {/* Anexar — menu único (foto, localização, respostas rápidas, IA) */}
+                  <div className="relative flex-shrink-0">
+                    {showAttachMenu && (
+                      <div data-attach-menu
+                        className="absolute bottom-full mb-2 left-0 w-56 p-1.5 rounded-xl border border-border shadow-xl z-20"
+                        style={{ background: '#0f1622' }}
+                      >
+                        <button
+                          onClick={() => { setShowAttachMenu(false); fileInputRef.current?.click() }}
+                          disabled={sending}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-hover transition-colors"
+                        >
+                          <Paperclip size={18} className="text-primary" /> Foto / Arquivo
+                        </button>
+                        <button
+                          onClick={() => { setShowAttachMenu(false); sendLocation() }}
+                          disabled={sending}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-hover transition-colors"
+                        >
+                          <MapPin size={18} className="text-red-400" /> Localização atual
+                        </button>
+                        <button
+                          data-qr-btn
+                          onClick={() => { setShowAttachMenu(false); setShowQuickReplies(true); setShowEmojiPicker(false); setQrSearch('') }}
+                          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-hover transition-colors"
+                        >
+                          <Zap size={18} className="text-gold" /> Respostas rápidas
+                        </button>
+                        {aiAllowed && (
+                          <button
+                            onClick={() => { setShowAttachMenu(false); aiSuggest() }}
+                            disabled={aiSuggesting}
+                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-text-secondary hover:bg-bg-hover transition-colors disabled:opacity-50"
+                          >
+                            <Sparkles size={18} className="text-primary" /> Sugerir com IA
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <button
-                      onClick={aiSuggest}
-                      disabled={aiSuggesting}
-                      className="p-2.5 rounded-xl text-primary hover:bg-primary/10 transition-colors flex-shrink-0 disabled:opacity-50"
-                      title="Sugerir resposta com IA"
+                      data-attach-btn
+                      onClick={() => { setShowAttachMenu((v) => !v); setShowEmojiPicker(false); setShowQuickReplies(false) }}
+                      disabled={sending}
+                      className={`p-2.5 rounded-xl transition-colors ${
+                        showAttachMenu ? 'bg-primary/20 text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
+                      }`}
+                      title="Anexar"
                     >
-                      <Sparkles size={20} className={aiSuggesting ? 'animate-pulse' : ''} />
+                      <Paperclip size={22} />
                     </button>
-                  )}
+                  </div>
 
-                  {/* Text input */}
+                  {/* Campo de texto — maior */}
                   <textarea
                     ref={inputRef}
                     value={input}
@@ -919,43 +931,41 @@ export default function Attendance() {
                       }
                     }}
                     placeholder="Digite uma mensagem... (Shift+Enter para nova linha)"
-                    className="input-field flex-1 resize-none min-h-[42px] max-h-32 py-2.5 text-sm"
+                    className="input-field flex-1 resize-none min-h-[52px] max-h-44 py-3 px-4 text-base leading-relaxed"
                     rows={1}
                     disabled={sending}
                     style={{ height: 'auto' }}
                     onInput={(e) => {
                       const t = e.target as HTMLTextAreaElement
                       t.style.height = 'auto'
-                      t.style.height = Math.min(t.scrollHeight, 128) + 'px'
+                      t.style.height = Math.min(t.scrollHeight, 176) + 'px'
                     }}
                   />
 
-                  {/* Audio */}
-                  <button
-                    onClick={startRecording}
-                    disabled={sending || !!input.trim()}
-                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
-                      sending || input.trim()
-                        ? 'text-text-muted/30 cursor-not-allowed'
-                        : 'text-text-muted hover:text-danger hover:bg-danger/10'
-                    }`}
-                    title="Gravar áudio"
-                  >
-                    <Mic size={20} />
-                  </button>
-
-                  {/* Send */}
-                  <button
-                    onClick={sendMessage}
-                    disabled={!input.trim() || sending}
-                    className="btn-primary p-2.5 rounded-xl flex items-center justify-center flex-shrink-0"
-                  >
-                    {sending ? (
-                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    ) : (
-                      <Send size={18} />
-                    )}
-                  </button>
+                  {/* Botão único: Enviar quando há texto, Microfone quando vazio */}
+                  {input.trim() ? (
+                    <button
+                      onClick={sendMessage}
+                      disabled={sending}
+                      className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
+                      title="Enviar mensagem"
+                    >
+                      {sending ? (
+                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      ) : (
+                        <Send size={20} />
+                      )}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={startRecording}
+                      disabled={sending}
+                      className="btn-primary rounded-full w-12 h-12 flex items-center justify-center flex-shrink-0"
+                      title="Gravar áudio"
+                    >
+                      <Mic size={20} />
+                    </button>
+                  )}
                 </div>
               )}
             </div>

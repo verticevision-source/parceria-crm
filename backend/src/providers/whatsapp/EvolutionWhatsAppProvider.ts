@@ -46,6 +46,34 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     return to.replace(/@.*$/, '')
   }
 
+  /**
+   * Envia via Evolution com fallback para @lid.
+   *
+   * O WhatsApp novo usa identificadores de privacidade "@lid" para alguns
+   * contatos. Nesses casos o número puro não existe como telefone real
+   * (exists:false) e é preciso enviar com o sufixo @lid para o WhatsApp
+   * resolver o número verdadeiro. Tentamos primeiro como número normal
+   * (@s.whatsapp.net, que cobre a maioria) e, se falhar com exists:false,
+   * repetimos com @lid. Seguro: números inexistentes de verdade falham nas
+   * duas tentativas, sem efeito colateral.
+   */
+  private async sendWithLidFallback<T>(
+    number: string,
+    doSend: (target: string) => Promise<T>,
+  ): Promise<T> {
+    try {
+      return await doSend(number)
+    } catch (err) {
+      const msg = String((err as Error)?.message || '')
+      const looksLikeLid = /exists"?\s*:\s*false/i.test(msg) || /\b400\b/.test(msg)
+      if (looksLikeLid && !number.includes('@')) {
+        logger.info(`[Evolution] Número ${number} não existe como telefone — tentando como @lid`)
+        return await doSend(`${number}@lid`)
+      }
+      throw err
+    }
+  }
+
   // ── Conexão ───────────────────────────────────────────────────────────────
 
   async connect(sessionId: string, _userId: string): Promise<ConnectionStatus> {
@@ -153,10 +181,12 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   async sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
-    const data = await this.req<any>('POST', `/message/sendText/${sessionId}`, {
-      number,
-      text: body,
-    })
+    const data = await this.sendWithLidFallback(number, (target) =>
+      this.req<any>('POST', `/message/sendText/${sessionId}`, {
+        number: target,
+        text: body,
+      }),
+    )
     return {
       externalId: data?.key?.id || `evo_${Date.now()}`,
       sentAt: new Date(),
@@ -171,14 +201,16 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       : file.mimetype.startsWith('audio/') ? 'audio'
       : 'document'
 
-    const data = await this.req<any>('POST', `/message/sendMedia/${sessionId}`, {
-      number,
-      mediatype,
-      mimetype: file.mimetype,
-      caption: '',
-      media: file.data,        // base64 puro, sem prefixo data:
-      fileName: file.filename,
-    })
+    const data = await this.sendWithLidFallback(number, (target) =>
+      this.req<any>('POST', `/message/sendMedia/${sessionId}`, {
+        number: target,
+        mediatype,
+        mimetype: file.mimetype,
+        caption: '',
+        media: file.data,        // base64 puro, sem prefixo data:
+        fileName: file.filename,
+      }),
+    )
     return {
       externalId: data?.key?.id || `evo_${Date.now()}`,
       sentAt: new Date(),
@@ -187,11 +219,33 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   async sendAudio(sessionId: string, to: string, audioBase64: string): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
-    const data = await this.req<any>('POST', `/message/sendWhatsAppAudio/${sessionId}`, {
-      number,
-      audio: audioBase64,
-      encoding: true,   // Evolution re-codifica para opus/ogg compatível com WhatsApp
-    })
+    const data = await this.sendWithLidFallback(number, (target) =>
+      this.req<any>('POST', `/message/sendWhatsAppAudio/${sessionId}`, {
+        number: target,
+        audio: audioBase64,
+        encoding: true,   // Evolution re-codifica para opus/ogg compatível com WhatsApp
+      }),
+    )
+    return {
+      externalId: data?.key?.id || `evo_${Date.now()}`,
+      sentAt: new Date(),
+    }
+  }
+
+  async sendLocation(
+    sessionId: string, to: string,
+    latitude: number, longitude: number, name?: string, address?: string
+  ): Promise<SendMessageResult> {
+    const number = this.normalizeNumber(to)
+    const data = await this.sendWithLidFallback(number, (target) =>
+      this.req<any>('POST', `/message/sendLocation/${sessionId}`, {
+        number: target,
+        latitude,
+        longitude,
+        name: name || '',
+        address: address || '',
+      }),
+    )
     return {
       externalId: data?.key?.id || `evo_${Date.now()}`,
       sentAt: new Date(),
