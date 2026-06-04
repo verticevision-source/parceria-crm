@@ -40,6 +40,15 @@ function formatMessageTime(date: string) {
   return format(d, 'dd/MM/yy')
 }
 
+// Origem da mídia: base64/data URL renderiza direto; URL externa passa pelo proxy
+function mediaSrc(url: string | undefined | null): string {
+  if (!url) return ''
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url
+  // base64 cru (sem prefixo) também vira data URL
+  if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(url.slice(0, 200))) return `data:application/octet-stream;base64,${url}`
+  return `/api/media/proxy?url=${encodeURIComponent(url)}`
+}
+
 function formatRecordingTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0')
   const s = (seconds % 60).toString().padStart(2, '0')
@@ -130,6 +139,8 @@ export default function Attendance() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
   const [showQuickReplies, setShowQuickReplies] = useState(false)
   const [showAttachMenu, setShowAttachMenu] = useState(false)
+  const [showLocation, setShowLocation] = useState(false)
+  const [locInput, setLocInput] = useState('')
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [qrSearch, setQrSearch] = useState('')
 
@@ -355,35 +366,71 @@ export default function Attendance() {
     }
   }
 
+  // Abre o modal de localização (colar link/coordenadas ou usar GPS)
   const sendLocation = () => {
     if (!selected?.contact?.phone) return
+    setLocInput('')
+    setShowLocation(true)
+  }
+
+  // Extrai lat/lng de um link do Google Maps ou texto "lat, lng"
+  const parseLatLng = (text: string): { lat: number; lng: number } | null => {
+    const t = text.trim()
+    const patterns = [
+      /@(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,        // .../@-21.17,-47.81,...
+      /[?&]q=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,    // ...?q=lat,lng
+      /[?&]ll=(-?\d{1,3}\.\d+),(-?\d{1,3}\.\d+)/,   // ...?ll=lat,lng
+      /(-?\d{1,3}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/,    // "lat, lng" puro
+    ]
+    for (const re of patterns) {
+      const m = t.match(re)
+      if (m) {
+        const lat = parseFloat(m[1]); const lng = parseFloat(m[2])
+        if (Math.abs(lat) <= 90 && Math.abs(lng) <= 180) return { lat, lng }
+      }
+    }
+    return null
+  }
+
+  const sendLocationCoords = async (lat: number, lng: number) => {
+    if (!selected?.contact?.phone) return
+    setSending(true)
+    try {
+      await whatsappApi.sendLocation(selected.contact.phone, lat, lng)
+      toast.success('Localização enviada!')
+      setShowLocation(false)
+    } catch {
+      toast.error('Erro ao enviar localização')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  const sendLocationFromInput = () => {
+    const coords = parseLatLng(locInput)
+    if (!coords) {
+      toast.error('Cole um link do Google Maps ou coordenadas (ex: -21.1767, -47.8208)')
+      return
+    }
+    sendLocationCoords(coords.lat, coords.lng)
+  }
+
+  const useCurrentLocation = () => {
     if (!navigator.geolocation) {
-      toast.error('Geolocalização não suportada neste navegador')
+      toast.error('GPS não suportado neste navegador')
       return
     }
     toast.loading('Obtendo sua localização...', { id: 'geo' })
     navigator.geolocation.getCurrentPosition(
-      async (pos) => {
+      (pos) => {
         toast.dismiss('geo')
-        setSending(true)
-        try {
-          await whatsappApi.sendLocation(
-            selected.contact!.phone,
-            pos.coords.latitude,
-            pos.coords.longitude,
-          )
-          toast.success('Localização enviada!')
-        } catch {
-          toast.error('Erro ao enviar localização')
-        } finally {
-          setSending(false)
-        }
+        sendLocationCoords(pos.coords.latitude, pos.coords.longitude)
       },
       () => {
         toast.dismiss('geo')
-        toast.error('Não foi possível obter a localização (permissão negada)')
+        toast.error('Não consegui obter sua localização. Cole o link/coordenadas no campo acima.')
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: false, timeout: 15000, maximumAge: 60000 }
     )
   }
 
@@ -724,7 +771,7 @@ export default function Attendance() {
                           <audio
                             controls
                             preload="metadata"
-                            src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                            src={mediaSrc(msg.mediaUrl)}
                             className="h-8 max-w-[220px]"
                             style={{ filter: msg.direction === 'OUT' ? 'invert(1)' : 'none', opacity: 0.9 }}
                             onError={() => toast.error('Não foi possível carregar o áudio')}
@@ -735,11 +782,11 @@ export default function Attendance() {
                       {msg.type === 'IMAGE' && msg.mediaUrl && (
                         <div className="relative group">
                           <img
-                            src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                            src={mediaSrc(msg.mediaUrl)}
                             alt="imagem"
                             className="max-w-xs rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
                             loading="lazy"
-                            onClick={() => window.open(`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl!)}`, '_blank')}
+                            onClick={() => window.open(mediaSrc(msg.mediaUrl), '_blank')}
                             onError={(e) => {
                               const el = e.target as HTMLImageElement
                               el.style.display = 'none'
@@ -759,7 +806,7 @@ export default function Attendance() {
                             style={{ maxHeight: '300px' }}
                             onError={() => toast.error('Não foi possível carregar o vídeo')}
                           >
-                            <source src={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`} />
+                            <source src={mediaSrc(msg.mediaUrl)} />
                             Seu browser não suporta vídeo.
                           </video>
                         </div>
@@ -767,7 +814,7 @@ export default function Attendance() {
                       {/* Document */}
                       {msg.type === 'DOCUMENT' && msg.mediaUrl && (
                         <a
-                          href={`/api/media/proxy?url=${encodeURIComponent(msg.mediaUrl)}`}
+                          href={mediaSrc(msg.mediaUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-2 text-sm underline hover:opacity-80 transition-opacity"
@@ -1098,6 +1145,41 @@ export default function Attendance() {
             <div className="mt-5">
               <p className="text-text-muted text-xs font-medium mb-3">Status da Conversa</p>
               <StatusBadge status={selected.status} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de localização */}
+      {showLocation && (
+        <div className="modal-overlay" onClick={() => setShowLocation(false)}>
+          <div className="modal-panel max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <MapPin size={18} className="text-red-400" /> Enviar localização
+              </h3>
+              <button onClick={() => setShowLocation(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              Cole um <b>link do Google Maps</b> ou as <b>coordenadas</b> (latitude, longitude). Ou use sua localização atual.
+            </p>
+            <input
+              value={locInput}
+              onChange={(e) => setLocInput(e.target.value)}
+              placeholder="https://maps.google.com/... ou -21.1767, -47.8208"
+              className="input-field w-full mb-3"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') sendLocationFromInput() }}
+            />
+            <div className="flex gap-2">
+              <button onClick={useCurrentLocation} disabled={sending}
+                className="btn-ghost border border-border flex items-center justify-center gap-2 text-sm flex-1">
+                <MapPin size={15} /> Minha localização
+              </button>
+              <button onClick={sendLocationFromInput} disabled={sending}
+                className="btn-primary flex items-center justify-center gap-2 flex-1">
+                <Send size={15} /> {sending ? 'Enviando...' : 'Enviar'}
+              </button>
             </div>
           </div>
         </div>

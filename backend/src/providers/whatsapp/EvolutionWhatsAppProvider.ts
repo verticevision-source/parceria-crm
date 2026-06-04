@@ -376,7 +376,7 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       || ''
   }
 
-  /** Extrai base64 de mídia quando webhookBase64 = true */
+  /** Extrai base64 de mídia (webhookBase64) e retorna como data URL com o mimetype */
   private extractMediaBase64(message: any): string | undefined {
     if (!message) return undefined
     const candidates = [
@@ -388,7 +388,12 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       message.stickerMessage,
     ]
     for (const m of candidates) {
-      if (m?.base64) return m.base64
+      if (m?.base64) {
+        const b64: string = m.base64
+        if (b64.startsWith('data:')) return b64
+        const mime = m.mimetype || 'application/octet-stream'
+        return `data:${mime};base64,${b64}`
+      }
     }
     return undefined
   }

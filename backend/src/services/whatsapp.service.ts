@@ -646,6 +646,8 @@ export class WhatsAppService {
         direction: 'OUT',
         type: msgType,
         textBody: file.filename,
+        // Guarda a própria mídia como data URL para exibir no chat
+        mediaUrl: `data:${file.mimetype};base64,${file.data}`,
         externalMessageId: result?.externalId,
         sentAt: result?.sentAt || new Date(),
       },
@@ -697,6 +699,9 @@ export class WhatsAppService {
       ? (provider as any).sendAudio(session.id, to, audioData, mimetype)
       : provider.sendMessage(session.id, to, '[Áudio]')
 
+    const audioMime = mimetype || 'audio/ogg'
+    const audioDataUrl = audioData.startsWith('data:') ? audioData : `data:${audioMime};base64,${audioData}`
+
     const message = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -706,6 +711,7 @@ export class WhatsAppService {
         direction: 'OUT',
         type: 'AUDIO',
         textBody: null,
+        mediaUrl: audioDataUrl,
         externalMessageId: result?.externalId,
         sentAt: result?.sentAt || new Date(),
       },
