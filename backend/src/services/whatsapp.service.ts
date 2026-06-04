@@ -69,9 +69,12 @@ function setupMessageListener(): void {
       if (!session) return
 
       const phone = normalizePhone(message.from)
-      // Dono = quem já tem o contato (qualquer atendente). Se ninguém tem, o dono da sessão.
+      // Dono = o atendente que conectou este número (a sessão). Ele recebe e vê
+      // tudo que chega no número. Se o contato já existia com outro dono (sobra
+      // de uso anterior), reatribuímos ao dono do número.
+      const ownerUserId = session.userId
+
       let contact = await findContactGlobal(phone)
-      const ownerUserId = contact?.userId || session.userId
 
       if (!contact) {
         contact = await prisma.contact.create({
@@ -82,11 +85,20 @@ function setupMessageListener(): void {
           },
         })
         logger.info(`[WhatsAppService] Novo contato criado: ${contact.name} (${phone})`)
-      } else if (message.senderName?.trim() && (contact.name === contact.phone || !contact.name)) {
-        contact = await prisma.contact.update({
-          where: { id: contact.id },
-          data: { name: message.senderName.trim() },
-        })
+      } else {
+        const reassign = contact.userId !== ownerUserId
+        const newName = (message.senderName?.trim() && (contact.name === contact.phone || !contact.name))
+          ? message.senderName.trim() : undefined
+        if (reassign || newName) {
+          contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: {
+              ...(reassign ? { userId: ownerUserId } : {}),
+              ...(newName ? { name: newName } : {}),
+            },
+          })
+          if (reassign) logger.info(`[WhatsAppService] Contato ${phone} reatribuído ao dono do número (${ownerUserId})`)
+        }
       }
 
       // Conversa única por contato
@@ -113,6 +125,7 @@ function setupMessageListener(): void {
         conversation = await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
+            userId: ownerUserId,   // garante que a conversa fica com o dono do número
             lastMessage: message.body,
             lastMessageAt: message.timestamp,
             unreadCount: { increment: 1 },
