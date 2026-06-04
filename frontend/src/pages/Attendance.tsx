@@ -207,7 +207,7 @@ export default function Attendance() {
   useEffect(() => {
     const socket = getSocket()
 
-    socket.on('new-message', ({ message, conversation }: { message: Message; conversation: Conversation }) => {
+    socket.on('new-message', ({ message, conversation, contact }: { message: Message; conversation: Conversation; contact?: Conversation['contact'] }) => {
       setMessages((prev) => {
         if (selectedRef.current?.id === conversation.id) {
           if (prev.some((m) => m.id === message.id)) return prev
@@ -217,14 +217,18 @@ export default function Attendance() {
       })
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === conversation.id)
+        let next: Conversation[]
         if (idx >= 0) {
-          const updated = [...prev]
-          updated[idx] = { ...updated[idx], ...conversation }
-          return updated.sort((a, b) =>
-            new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
-          )
+          // Conversa já existe — atualiza
+          next = [...prev]
+          next[idx] = { ...next[idx], ...conversation, contact: contact || next[idx].contact }
+        } else {
+          // Conversa nova — adiciona no topo (antes só aparecia ao recarregar)
+          next = [{ ...conversation, contact: contact || conversation.contact } as Conversation, ...prev]
         }
-        return prev
+        return next.sort((a, b) =>
+          new Date(b.lastMessageAt || 0).getTime() - new Date(a.lastMessageAt || 0).getTime()
+        )
       })
 
       // Browser notification for messages in background

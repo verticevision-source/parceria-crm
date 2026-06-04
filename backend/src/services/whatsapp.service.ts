@@ -27,13 +27,16 @@ async function findContactByPhone(userId: string, phone: string) {
   return candidates[0] || null
 }
 
-/** Acha contato por telefone em qualquer usuário (modelo de número compartilhado) */
+/** Acha contato por telefone em qualquer usuário (modelo de número compartilhado).
+ *  Ordena por createdAt para ser DETERMINÍSTICO — sem orderBy o Postgres pode
+ *  retornar contatos diferentes a cada chamada quando há duplicados, gerando
+ *  conversas duplicadas. */
 async function findContactGlobal(phone: string) {
-  const exact = await prisma.contact.findFirst({ where: { phone } })
+  const exact = await prisma.contact.findFirst({ where: { phone }, orderBy: { createdAt: 'asc' } })
   if (exact) return exact
   const tail = phone.slice(-8)
   if (tail.length < 6) return null
-  return prisma.contact.findFirst({ where: { phone: { contains: tail } } })
+  return prisma.contact.findFirst({ where: { phone: { contains: tail } }, orderBy: { createdAt: 'asc' } })
 }
 
 async function resolveDbSession(sessionId: string) {
