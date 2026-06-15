@@ -167,7 +167,7 @@ export class LeadService {
     if (conversation.userId !== userId) throw new Error('Acesso negado')
     if (!conversation.contactId) throw new Error('Conversa não possui contato vinculado')
 
-    const firstStage = await prisma.pipelineStage.findFirst({ orderBy: { order: 'asc' } })
+    const firstStage = await prisma.pipelineStage.findFirst({ where: { boardId: null }, orderBy: { order: 'asc' } })
 
     const lead = await prisma.lead.create({
       data: {

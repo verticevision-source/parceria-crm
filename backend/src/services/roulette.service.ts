@@ -210,7 +210,7 @@ export class RouletteService {
     // Garante uma etapa (senão o lead some do Kanban, que agrupa por etapa)
     const firstStage = input.pipelineStageId
       ? null
-      : await prisma.pipelineStage.findFirst({ orderBy: { order: 'asc' } })
+      : await prisma.pipelineStage.findFirst({ where: { boardId: null }, orderBy: { order: 'asc' } })
 
     // Cria o lead no banco
     const lead = await prisma.lead.create({

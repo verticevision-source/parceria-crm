@@ -25,7 +25,12 @@ export class PipelineService {
   }
 
   static async getKanban(userId: string, role: string) {
-    const stages = await prisma.pipelineStage.findMany({ orderBy: { order: 'asc' } })
+    // Apenas etapas globais (sem board) no Kanban principal — as etapas de
+    // boards ficam dentro de cada board (tela CRM Boards).
+    const stages = await prisma.pipelineStage.findMany({
+      where: { boardId: null },
+      orderBy: { order: 'asc' },
+    })
     const whereUser = role === 'ADMIN' ? {} : { responsibleUserId: userId }
 
     const leads = await prisma.lead.findMany({
