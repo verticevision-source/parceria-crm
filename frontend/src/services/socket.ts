@@ -11,6 +11,8 @@ export function getSocket(): Socket {
       reconnection: true,
       reconnectionAttempts: 5,
       reconnectionDelay: 2000,
+      // Envia o JWT no handshake — o backend valida e só deixa ouvir a própria sala
+      auth: (cb) => cb({ token: localStorage.getItem('token') || '' }),
     })
   }
   return socket

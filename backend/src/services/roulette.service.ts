@@ -207,6 +207,11 @@ export class RouletteService {
     await prisma.conversation.updateMany({ where: { contactId: input.contactId }, data: { userId: chosen.userId } }).catch(() => {})
     await prisma.message.updateMany({ where: { contactId: input.contactId }, data: { userId: chosen.userId } }).catch(() => {})
 
+    // Garante uma etapa (senão o lead some do Kanban, que agrupa por etapa)
+    const firstStage = input.pipelineStageId
+      ? null
+      : await prisma.pipelineStage.findFirst({ orderBy: { order: 'asc' } })
+
     // Cria o lead no banco
     const lead = await prisma.lead.create({
       data: {
@@ -215,7 +220,7 @@ export class RouletteService {
         campaignId: input.campaignId || null,
         source: input.source || 'roulette',
         notes: input.notes || null,
-        pipelineStageId: input.pipelineStageId || null,
+        pipelineStageId: input.pipelineStageId || firstStage?.id || null,
         lastInteractionAt: new Date(),
       },
       include: {

@@ -5,6 +5,7 @@ import app from './app'
 import { setSocketIO } from './services/whatsapp.service'
 import { setRouletteSocketIO } from './services/roulette.service'
 import { setInternalChatIO } from './services/internalChat.service'
+import { verifyToken } from './utils/jwt'
 import { logger } from './utils/logger'
 
 const PORT = process.env.PORT || 3001
@@ -20,20 +21,31 @@ const io = new SocketServer(httpServer, {
   },
 })
 
+// Autenticação do socket: exige JWT válido no handshake
+io.use((socket, next) => {
+  try {
+    const token = (socket.handshake.auth as any)?.token
+    if (!token) return next(new Error('unauthorized'))
+    const payload = verifyToken(token)
+    ;(socket.data as any).userId = payload.userId
+    ;(socket.data as any).role = payload.role
+    next()
+  } catch {
+    next(new Error('unauthorized'))
+  }
+})
+
 io.on('connection', (socket) => {
-  logger.info(`[Socket.IO] Cliente conectado: ${socket.id}`)
+  const userId = (socket.data as any).userId as string
+  // Entra automaticamente APENAS na própria sala — impede ouvir conversas de outros
+  socket.join(`user:${userId}`)
+  logger.info(`[Socket.IO] Conectado e autenticado: user:${userId}`)
 
-  socket.on('join', (userId: string) => {
-    socket.join(`user:${userId}`)
-    logger.info(`[Socket.IO] Usuário ${userId} entrou na sala user:${userId}`)
-  })
-
-  socket.on('leave', (userId: string) => {
-    socket.leave(`user:${userId}`)
-  })
+  // 'join' mantido por compatibilidade, mas só entra na própria sala (ignora o arg do cliente)
+  socket.on('join', () => { socket.join(`user:${userId}`) })
 
   socket.on('disconnect', () => {
-    logger.info(`[Socket.IO] Cliente desconectado: ${socket.id}`)
+    logger.info(`[Socket.IO] Desconectado: user:${userId}`)
   })
 })
 

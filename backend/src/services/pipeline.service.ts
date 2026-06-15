@@ -38,9 +38,19 @@ export class PipelineService {
       orderBy: { updatedAt: 'desc' },
     })
 
+    // Leads sem etapa (ou com etapa deletada) NÃO podem sumir: caem na
+    // primeira etapa para sempre ficarem visíveis no Kanban.
+    const stageIds = new Set(stages.map((s) => s.id))
+    const firstStageId = stages[0]?.id
+
     return stages.map((stage) => ({
       ...stage,
-      leads: leads.filter((l) => l.pipelineStageId === stage.id),
+      leads: leads.filter((l) => {
+        const effectiveStage = l.pipelineStageId && stageIds.has(l.pipelineStageId)
+          ? l.pipelineStageId
+          : firstStageId
+        return effectiveStage === stage.id
+      }),
     }))
   }
 }
