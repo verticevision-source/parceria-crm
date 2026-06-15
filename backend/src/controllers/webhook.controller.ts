@@ -15,7 +15,7 @@ export async function evolutionWebhook(req: Request, res: Response): Promise<voi
       return
     }
 
-    provider.handleWebhook(req.body)
+    await provider.handleWebhook(req.body)
     res.status(200).json({ ok: true })
   } catch (err) {
     logger.error('[Webhook] Erro ao processar webhook Evolution:', err)

@@ -292,7 +292,24 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   // ── Webhook ───────────────────────────────────────────────────────────────
 
-  handleWebhook(payload: unknown): void {
+  /** Baixa a mídia de uma mensagem recebida sob demanda (quando o webhook não
+   *  envia o base64). Retorna data URL. */
+  private async fetchMediaBase64(sessionId: string, keyId: string): Promise<string | undefined> {
+    try {
+      const data = await this.req<any>('POST', `/chat/getBase64FromMediaMessage/${sessionId}`, {
+        message: { key: { id: keyId } },
+      })
+      if (data?.base64) {
+        const mime = data.mimetype || 'application/octet-stream'
+        return `data:${mime};base64,${data.base64}`
+      }
+    } catch {
+      // mídia indisponível
+    }
+    return undefined
+  }
+
+  async handleWebhook(payload: unknown): Promise<void> {
     const data = payload as any
     const event: string = (data.event || '').toLowerCase()
 
@@ -320,7 +337,12 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         // Desembrulha mensagem efêmera (some depois) se houver
         const inner = msg.message?.ephemeralMessage?.message || msg.message
         const type = this.detectType(inner)
-        const mediaUrl = this.extractMediaBase64(inner)
+        let mediaUrl = this.extractMediaBase64(inner)
+
+        // Se é mídia mas o webhook não trouxe o base64, baixa sob demanda
+        if (!mediaUrl && ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(type) && msg.key?.id) {
+          mediaUrl = await this.fetchMediaBase64(data.instance, msg.key.id)
+        }
 
         // Localização recebida (pino do mapa)
         const loc = inner?.locationMessage || inner?.liveLocationMessage
