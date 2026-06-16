@@ -337,6 +337,14 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
         // Desembrulha mensagem efêmera (some depois) se houver
         const inner = msg.message?.ephemeralMessage?.message || msg.message
+
+        // Ignora mensagens sem conteúdo útil (container de álbum, reação, recibo,
+        // status/protocolo) — as fotos do álbum chegam separadas como imageMessage
+        if (inner?.albumMessage || inner?.reactionMessage || inner?.protocolMessage
+          || inner?.senderKeyDistributionMessage || inner?.messageContextInfo && Object.keys(inner).length === 1) {
+          continue
+        }
+
         const type = this.detectType(inner)
         let mediaUrl = this.extractMediaBase64(inner)
 
@@ -402,11 +410,31 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   private extractText(message: any): string {
     if (!message) return ''
-    return message.conversation
-      || message.extendedTextMessage?.text
-      || message.ephemeralMessage?.message?.extendedTextMessage?.text
-      || message.ephemeralMessage?.message?.conversation
+    // Desembrulha mensagens efêmeras / ver-uma-vez
+    const m = message.ephemeralMessage?.message
+      || message.viewOnceMessage?.message
+      || message.viewOnceMessageV2?.message
+      || message
+    const tpl = m.templateMessage?.hydratedTemplate || m.templateMessage?.hydratedFourRowTemplate
+    return (
+      m.conversation
+      || m.extendedTextMessage?.text
+      // legendas de mídia
+      || m.imageMessage?.caption
+      || m.videoMessage?.caption
+      || m.documentMessage?.caption
+      // anúncios/marketing do Meta (template com botões)
+      || tpl?.hydratedContentText
+      || (tpl?.hydratedTitleText ? `${tpl.hydratedTitleText}\n${tpl?.hydratedContentText || ''}`.trim() : '')
+      // botões / listas / interativos
+      || m.buttonsMessage?.contentText
+      || m.buttonsResponseMessage?.selectedDisplayText
+      || m.listMessage?.description
+      || m.listResponseMessage?.title
+      || m.interactiveMessage?.body?.text
+      || m.interactiveResponseMessage?.body?.text
       || ''
+    )
   }
 
   /** Extrai base64 de mídia (webhookBase64) e retorna como data URL com o mimetype */
