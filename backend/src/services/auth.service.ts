@@ -25,6 +25,8 @@ export class AuthService {
         name: user.name,
         email: user.email,
         role: user.role,
+        avatarUrl: user.avatarUrl,
+        fichaLink: user.fichaLink,
       },
     }
   }
@@ -52,7 +54,7 @@ export class AuthService {
   static async getMe(userId: string) {
     const user = await prisma.user.findUnique({
       where: { id: userId },
-      select: { id: true, name: true, email: true, role: true, isActive: true, aiEnabled: true, avatarUrl: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, isActive: true, aiEnabled: true, avatarUrl: true, fichaLink: true, createdAt: true },
     })
 
     if (!user) throw new Error('Usuário não encontrado')

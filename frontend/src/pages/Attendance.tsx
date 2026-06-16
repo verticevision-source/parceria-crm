@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText
 } from 'lucide-react'
 import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi } from '../services/api'
 import { getSocket } from '../services/socket'
@@ -661,6 +661,16 @@ export default function Attendance() {
     finally { setSavingCall(false) }
   }
 
+  // Enviar o link da ficha do vendedor (Parceria Financeira)
+  const sendFicha = async () => {
+    if (!user?.fichaLink) { toast.error('Seu link de ficha não está configurado. Peça ao admin para cadastrar.'); return }
+    if (!selected?.contact?.phone) return
+    try {
+      await whatsappApi.sendMessage(selected.contact.phone, `Olá! Para dar continuidade ao seu atendimento, preencha sua ficha pelo link: ${user.fichaLink}`)
+      toast.success('Ficha enviada!')
+    } catch { toast.error('Erro ao enviar a ficha') }
+  }
+
   const filtered = conversations.filter((c) => {
     const name = (c.contact?.name || c.contact?.phone || '').toLowerCase()
     return name.includes(search.toLowerCase())
@@ -1213,6 +1223,12 @@ export default function Attendance() {
             )}
 
             <div className="mt-5 space-y-2">
+              {user?.fichaLink && (
+                <button onClick={sendFicha} className="w-full btn-ghost border border-border flex items-center justify-center gap-2 text-sm text-primary">
+                  <FileText size={16} />
+                  Enviar minha ficha
+                </button>
+              )}
               <button onClick={startCall} className="w-full btn-ghost border border-border flex items-center justify-center gap-2 text-sm text-success">
                 <PhoneCall size={16} />
                 Ligar

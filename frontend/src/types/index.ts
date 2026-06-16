@@ -13,6 +13,7 @@ export interface User {
   isActive: boolean
   aiEnabled?: boolean
   avatarUrl?: string | null
+  fichaLink?: string | null
   createdAt: string
   updatedAt?: string
   whatsappSessions?: WhatsAppSession[]
@@ -156,6 +157,7 @@ export interface AuthUser {
   role: UserRole
   aiEnabled?: boolean
   avatarUrl?: string | null
+  fichaLink?: string | null
 }
 
 export interface KanbanColumn {

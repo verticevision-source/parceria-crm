@@ -10,7 +10,7 @@ import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER', avatarUrl: '' }
+const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER', avatarUrl: '', fichaLink: '' }
 
 export default function Users() {
   const { user: currentUser } = useAuth()
@@ -42,7 +42,7 @@ export default function Users() {
 
   const openEdit = (u: UserType) => {
     setEditing(u)
-    setForm({ name: u.name, email: u.email, password: '', role: u.role, avatarUrl: u.avatarUrl || '' })
+    setForm({ name: u.name, email: u.email, password: '', role: u.role, avatarUrl: u.avatarUrl || '', fichaLink: u.fichaLink || '' })
     setShowForm(true)
   }
 
@@ -58,7 +58,7 @@ export default function Users() {
     setSaving(true)
     try {
       if (editing) {
-        const data: Record<string, string> = { name: form.name, email: form.email, avatarUrl: form.avatarUrl }
+        const data: Record<string, string> = { name: form.name, email: form.email, avatarUrl: form.avatarUrl, fichaLink: form.fichaLink }
         if (form.password) data.password = form.password
         await usersApi.update(editing.id, data)
         toast.success('Usuário atualizado!')
@@ -322,6 +322,18 @@ export default function Users() {
               <option value="USER">Atendente</option>
               <option value="ADMIN">Administrador</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-2">
+              Link da ficha (Parceria Financeira)
+            </label>
+            <input
+              value={form.fichaLink}
+              onChange={(e) => setForm({ ...form, fichaLink: e.target.value })}
+              placeholder="https://...financeiro.../ficha/TOKEN"
+              className="input-field font-mono text-sm"
+            />
+            <p className="text-xs text-text-muted mt-1">Cole o link da ficha deste vendedor. Ele poderá enviá-lo ao cliente com 1 clique no Atendimento.</p>
           </div>
           <div className="flex gap-3 pt-2">
             <button onClick={() => setShowForm(false)} className="flex-1 btn-ghost border border-border">
