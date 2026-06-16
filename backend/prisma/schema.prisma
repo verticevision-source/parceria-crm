@@ -77,6 +77,7 @@ model User {
   bulkMessages     BulkMessage[]
   internalGroups   InternalGroupMember[]
   internalMessages InternalMessage[]
+  callLogs         CallLog[]
   aiEnabled        Boolean  @default(false)  // admin libera assistente de IA p/ este usuário
 
   @@map("users")
@@ -120,6 +121,7 @@ model Contact {
   leads            Lead[]
   tags             ContactTag[]
   bulkRecipients   BulkMessageRecipient[]
+  callLogs         CallLog[]
 
   @@map("contacts")
 }
@@ -211,8 +213,30 @@ model Lead {
   conversations   Conversation[]
   crmNotes        CRMNote[]
   rouletteLogs    RouletteLog[]
+  callLogs        CallLog[]
 
   @@map("leads")
+}
+
+model CallLog {
+  id          String   @id @default(uuid())
+  contactId   String
+  userId      String   // quem registrou a ligação
+  leadId      String?
+  phone       String
+  direction   String   @default("OUT")       // OUT = ligou, IN = recebeu
+  outcome     String   @default("completed")  // completed, no_answer, busy, voicemail, scheduled
+  durationSec Int      @default(0)
+  notes       String?  @db.Text
+  createdAt   DateTime @default(now())
+
+  contact Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lead    Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([contactId])
+  @@index([userId])
+  @@map("call_logs")
 }
 
 model CRMNote {

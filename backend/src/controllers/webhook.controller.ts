@@ -7,6 +7,14 @@ import { logger } from '../utils/logger'
 
 export async function evolutionWebhook(req: Request, res: Response): Promise<void> {
   try {
+    // Verificação de origem: se WEBHOOK_TOKEN está configurado, exige ?token= igual
+    const expected = process.env.WEBHOOK_TOKEN
+    if (expected && req.query.token !== expected) {
+      logger.warn('[Webhook] Token inválido — requisição rejeitada')
+      res.status(401).json({ error: 'unauthorized' })
+      return
+    }
+
     const provider = getWhatsAppProvider()
 
     if (!(provider instanceof EvolutionWhatsAppProvider)) {

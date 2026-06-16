@@ -77,8 +77,9 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
   // ── Conexão ───────────────────────────────────────────────────────────────
 
   async connect(sessionId: string, _userId: string): Promise<ConnectionStatus> {
+    const tokenQs = process.env.WEBHOOK_TOKEN ? `?token=${process.env.WEBHOOK_TOKEN}` : ''
     const webhookUrl = process.env.BACKEND_URL
-      ? `${process.env.BACKEND_URL}/api/webhook/evolution`
+      ? `${process.env.BACKEND_URL}/api/webhook/evolution${tokenQs}`
       : undefined
 
     // Proxy residencial opcional — configura via env vars PROXY_HOST, PROXY_PORT, etc.
