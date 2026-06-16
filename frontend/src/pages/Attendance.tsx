@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall
 } from 'lucide-react'
-import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
@@ -119,6 +119,8 @@ export default function Attendance() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
+  const [hasMoreMessages, setHasMoreMessages] = useState(false)
+  const [loadingOlder, setLoadingOlder] = useState(false)
   const [input, setInput] = useState('')
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('')
@@ -141,6 +143,12 @@ export default function Attendance() {
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showLocation, setShowLocation] = useState(false)
   const [locInput, setLocInput] = useState('')
+
+  // Ligações
+  const [calls, setCalls] = useState<Array<{ id: string; phone: string; direction: string; outcome: string; durationSec: number; notes?: string; createdAt: string; user?: { name: string } }>>([])
+  const [showCallModal, setShowCallModal] = useState(false)
+  const [callForm, setCallForm] = useState({ outcome: 'completed', durationMin: '', notes: '' })
+  const [savingCall, setSavingCall] = useState(false)
   const [quickReplies, setQuickReplies] = useState<QuickReply[]>([])
   const [qrSearch, setQrSearch] = useState('')
 
@@ -262,9 +270,11 @@ export default function Attendance() {
     return () => { socket.off('new-message') }
   }, [])
 
+  // Rola pro fim só quando muda a ÚLTIMA mensagem (nova no fim) — não ao
+  // prepender mensagens antigas (paginação)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  }, [messages[messages.length - 1]?.id])
 
   // Close popovers on click outside
   useEffect(() => {
@@ -296,6 +306,7 @@ export default function Attendance() {
         conversationsApi.markAsRead(conv.id),
       ])
       setMessages(msgRes.data.data)
+      setHasMoreMessages(!!msgRes.data.hasMore)
       setConversations((prev) =>
         prev.map((c) => (c.id === conv.id ? { ...c, unreadCount: 0 } : c))
       )
@@ -303,6 +314,21 @@ export default function Attendance() {
       toast.error('Erro ao carregar mensagens')
     } finally {
       setLoadingMessages(false)
+    }
+  }
+
+  const loadOlderMessages = async () => {
+    if (!selected || messages.length === 0 || loadingOlder) return
+    setLoadingOlder(true)
+    try {
+      const res = await conversationsApi.getMessages(selected.id, messages[0].id)
+      const older: Message[] = res.data.data
+      if (older.length > 0) setMessages((prev) => [...older, ...prev])
+      setHasMoreMessages(!!res.data.hasMore)
+    } catch {
+      toast.error('Erro ao carregar mensagens antigas')
+    } finally {
+      setLoadingOlder(false)
     }
   }
 
@@ -598,6 +624,43 @@ export default function Attendance() {
     }
   }
 
+  // ── Ligações ──────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const cid = selected?.contact?.id
+    if (!cid) { setCalls([]); return }
+    callsApi.list({ contactId: cid }).then((r) => setCalls(r.data.data)).catch(() => setCalls([]))
+  }, [selected?.contact?.id])
+
+  const startCall = () => {
+    const phone = selected?.contact?.phone
+    if (!phone) return
+    window.open(`tel:+${phone.replace(/\D/g, '')}`)
+    setCallForm({ outcome: 'completed', durationMin: '', notes: '' })
+    setShowCallModal(true)
+  }
+
+  const saveCall = async () => {
+    if (!selected?.contact) return
+    setSavingCall(true)
+    try {
+      const durationSec = callForm.durationMin ? Math.round(parseFloat(callForm.durationMin.replace(',', '.')) * 60) : 0
+      await callsApi.create({
+        contactId: selected.contact.id,
+        leadId: selected.leadId || undefined,
+        phone: selected.contact.phone,
+        direction: 'OUT',
+        outcome: callForm.outcome,
+        durationSec,
+        notes: callForm.notes || undefined,
+      })
+      toast.success('Ligação registrada!')
+      setShowCallModal(false)
+      const r = await callsApi.list({ contactId: selected.contact.id })
+      setCalls(r.data.data)
+    } catch { toast.error('Erro ao registrar ligação') }
+    finally { setSavingCall(false) }
+  }
+
   const filtered = conversations.filter((c) => {
     const name = (c.contact?.name || c.contact?.phone || '').toLowerCase()
     return name.includes(search.toLowerCase())
@@ -767,6 +830,14 @@ export default function Attendance() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-3 chat-messages">
+              {!loadingMessages && hasMoreMessages && messages.length > 0 && (
+                <div className="flex justify-center pb-2">
+                  <button onClick={loadOlderMessages} disabled={loadingOlder}
+                    className="text-xs px-3 py-1.5 rounded-full border border-border text-text-muted hover:text-text-primary hover:bg-bg-hover transition-colors">
+                    {loadingOlder ? 'Carregando...' : 'Carregar mensagens anteriores'}
+                  </button>
+                </div>
+              )}
               {loadingMessages ? (
                 <div className="flex items-center justify-center h-full">
                   <div className="w-8 h-8 border-2 border-border border-t-primary rounded-full animate-spin" />
@@ -1142,6 +1213,10 @@ export default function Attendance() {
             )}
 
             <div className="mt-5 space-y-2">
+              <button onClick={startCall} className="w-full btn-ghost border border-border flex items-center justify-center gap-2 text-sm text-success">
+                <PhoneCall size={16} />
+                Ligar
+              </button>
               <button onClick={createLead} className="w-full btn-primary flex items-center justify-center gap-2 text-sm">
                 <Briefcase size={16} />
                 Criar Lead no CRM
@@ -1156,6 +1231,31 @@ export default function Attendance() {
                 </a>
               )}
             </div>
+
+            {/* Histórico de ligações */}
+            {calls.length > 0 && (
+              <div className="mt-5">
+                <p className="text-text-muted text-xs font-medium mb-2 flex items-center gap-1.5">
+                  <PhoneCall size={12} /> Ligações ({calls.length})
+                </p>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                  {calls.map((c) => {
+                    const labels: Record<string, string> = { completed: 'Atendida', no_answer: 'Não atendeu', busy: 'Ocupado', voicemail: 'Caixa postal', scheduled: 'Agendada' }
+                    const colors: Record<string, string> = { completed: 'text-success', no_answer: 'text-warning', busy: 'text-danger', voicemail: 'text-text-muted', scheduled: 'text-primary' }
+                    return (
+                      <div key={c.id} className="p-2 rounded-lg bg-bg-tertiary text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className={`font-medium ${colors[c.outcome] || 'text-text-secondary'}`}>{labels[c.outcome] || c.outcome}</span>
+                          <span className="text-text-muted">{formatMessageTime(c.createdAt)}{c.durationSec > 0 ? ` · ${Math.round(c.durationSec / 60)}min` : ''}</span>
+                        </div>
+                        {c.notes && <p className="text-text-muted mt-0.5">{c.notes}</p>}
+                        {c.user?.name && <p className="text-text-muted/60 text-[10px] mt-0.5">por {c.user.name}</p>}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="mt-5">
               <p className="text-text-muted text-xs font-medium mb-3">Status da Conversa</p>
@@ -1194,6 +1294,51 @@ export default function Attendance() {
               <button onClick={sendLocationFromInput} disabled={sending}
                 className="btn-primary flex items-center justify-center gap-2 flex-1">
                 <Send size={15} /> {sending ? 'Enviando...' : 'Enviar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal registrar ligação */}
+      {showCallModal && (
+        <div className="modal-overlay" onClick={() => setShowCallModal(false)}>
+          <div className="modal-panel max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <PhoneCall size={18} className="text-success" /> Registrar ligação
+              </h3>
+              <button onClick={() => setShowCallModal(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              Abrimos o discador para <b>{displayPhone(selected?.contact?.phone)}</b>. Registre o resultado da ligação no histórico.
+            </p>
+            <div className="space-y-3">
+              <div>
+                <label className="text-sm text-text-muted">Resultado</label>
+                <select className="input-field w-full mt-1" value={callForm.outcome} onChange={(e) => setCallForm((f) => ({ ...f, outcome: e.target.value }))}>
+                  <option value="completed">Atendida</option>
+                  <option value="no_answer">Não atendeu</option>
+                  <option value="busy">Ocupado</option>
+                  <option value="voicemail">Caixa postal</option>
+                  <option value="scheduled">Retorno agendado</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Duração (minutos, opcional)</label>
+                <input className="input-field w-full mt-1" type="number" min="0" placeholder="Ex: 3"
+                  value={callForm.durationMin} onChange={(e) => setCallForm((f) => ({ ...f, durationMin: e.target.value }))} />
+              </div>
+              <div>
+                <label className="text-sm text-text-muted">Anotações (opcional)</label>
+                <textarea className="input-field w-full mt-1 resize-none" rows={3} placeholder="O que foi conversado..."
+                  value={callForm.notes} onChange={(e) => setCallForm((f) => ({ ...f, notes: e.target.value }))} />
+              </div>
+            </div>
+            <div className="flex gap-2 mt-5">
+              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowCallModal(false)}>Cancelar</button>
+              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={saveCall} disabled={savingCall}>
+                <PhoneCall size={15} /> {savingCall ? 'Salvando...' : 'Salvar'}
               </button>
             </div>
           </div>

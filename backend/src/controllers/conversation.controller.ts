@@ -24,12 +24,14 @@ export class ConversationController {
   }
 
   static async getMessages(req: AuthRequest, res: Response): Promise<void> {
-    const messages = await ConversationService.getMessages(
+    const { before } = req.query
+    const result = await ConversationService.getMessages(
       req.params.id,
       req.user!.userId,
-      req.user!.role
+      req.user!.role,
+      before as string | undefined
     )
-    res.json({ success: true, data: messages })
+    res.json({ success: true, data: result.messages, hasMore: result.hasMore })
   }
 
   static async updateStatus(req: AuthRequest, res: Response): Promise<void> {

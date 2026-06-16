@@ -80,6 +80,14 @@ export const monitorApi = {
   },
 }
 
+// Ligações (registro de chamadas)
+export const callsApi = {
+  list: (params: { contactId?: string; leadId?: string }) => api.get('/calls', { params }),
+  create: (data: { contactId: string; leadId?: string; phone: string; direction?: string; outcome?: string; durationSec?: number; notes?: string }) =>
+    api.post('/calls', data),
+  remove: (id: string) => api.delete(`/calls/${id}`),
+}
+
 // Modelos (templates aprovados)
 export const templatesApi = {
   list: () => api.get('/templates'),
@@ -130,7 +138,8 @@ export const conversationsApi = {
   findAll: (status?: string) =>
     api.get('/conversations', { params: status ? { status } : {} }),
   findById: (id: string) => api.get(`/conversations/${id}`),
-  getMessages: (id: string) => api.get(`/conversations/${id}/messages`),
+  getMessages: (id: string, before?: string) =>
+    api.get(`/conversations/${id}/messages`, { params: before ? { before } : {} }),
   updateStatus: (id: string, status: string) =>
     api.patch(`/conversations/${id}/status`, { status }),
   markAsRead: (id: string) => api.patch(`/conversations/${id}/read`),

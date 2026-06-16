@@ -19,6 +19,7 @@ export class ContactService {
         _count: { select: { conversations: true, leads: true } },
       },
       orderBy: { createdAt: 'desc' },
+      take: 1000,  // limite de segurança; use a busca para encontrar mais antigos
     })
   }
 

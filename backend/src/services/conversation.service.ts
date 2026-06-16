@@ -46,7 +46,7 @@ export class ConversationService {
     return conversation
   }
 
-  static async getMessages(conversationId: string, userId: string, role: string) {
+  static async getMessages(conversationId: string, userId: string, role: string, before?: string) {
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
     })
@@ -56,10 +56,22 @@ export class ConversationService {
       throw new Error('Acesso negado')
     }
 
-    return prisma.message.findMany({
-      where: { conversationId },
-      orderBy: { sentAt: 'asc' },
+    const LIMIT = 60
+    const where: Record<string, unknown> = { conversationId }
+    if (before) {
+      const ref = await prisma.message.findUnique({ where: { id: before }, select: { sentAt: true } })
+      if (ref?.sentAt) where.sentAt = { lt: ref.sentAt }
+    }
+
+    // Pega as mais recentes primeiro (paginação para trás), depois inverte p/ exibir em ordem
+    const rows = await prisma.message.findMany({
+      where,
+      orderBy: { sentAt: 'desc' },
+      take: LIMIT + 1,
     })
+    const hasMore = rows.length > LIMIT
+    const page = rows.slice(0, LIMIT).reverse()
+    return { messages: page, hasMore }
   }
 
   static async updateStatus(
