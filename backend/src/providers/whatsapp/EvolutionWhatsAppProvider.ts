@@ -433,6 +433,9 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       || m.listResponseMessage?.title
       || m.interactiveMessage?.body?.text
       || m.interactiveResponseMessage?.body?.text
+      // contato compartilhado (vCard)
+      || (m.contactMessage ? `👤 ${m.contactMessage.displayName || 'Contato compartilhado'}` : '')
+      || (m.contactsArrayMessage ? `👤 ${m.contactsArrayMessage.displayName || (m.contactsArrayMessage.contacts?.length || '') + ' contatos compartilhados'}` : '')
       || ''
     )
   }
