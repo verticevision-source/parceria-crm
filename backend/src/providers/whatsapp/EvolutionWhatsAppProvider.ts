@@ -340,11 +340,11 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         }
 
         const type = this.detectType(inner)
-        let mediaUrl = this.extractMediaBase64(inner)
-
-        // Se é mídia mas o webhook não trouxe o base64, baixa sob demanda
-        if (!mediaUrl && ['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(type) && msg.key?.id) {
-          mediaUrl = await this.fetchMediaBase64(data.instance, msg.key.id)
+        // Mídia: guarda só uma REFERÊNCIA (evo:instancia:msgId), não o base64 —
+        // evita inchar o banco. O proxy de mídia busca sob demanda ao exibir.
+        let mediaUrl: string | undefined
+        if (['IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(type) && msg.key?.id) {
+          mediaUrl = `evo:${data.instance}:${msg.key.id}`
         }
 
         // Localização recebida (pino do mapa)

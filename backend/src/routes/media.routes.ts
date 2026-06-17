@@ -74,6 +74,40 @@ router.get('/proxy', authMiddleware, async (req: Request, res: Response) => {
       return
     }
 
+    // ── Evolution: "evo:<instancia>:<messageId>" — busca a mídia sob demanda ──
+    if (url.startsWith('evo:')) {
+      const rest = url.slice(4)
+      const sep = rest.indexOf(':')
+      const instance = rest.slice(0, sep)
+      const messageId = rest.slice(sep + 1)
+      if (!instance || !messageId) {
+        res.status(400).json({ message: 'Referência de mídia inválida' })
+        return
+      }
+      const evoUrl = (process.env.EVOLUTION_API_URL || '').replace(/\/$/, '')
+      const evoKey = process.env.EVOLUTION_API_KEY || ''
+      const r = await fetch(`${evoUrl}/chat/getBase64FromMediaMessage/${instance}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: evoKey },
+        body: JSON.stringify({ message: { key: { id: messageId } } }),
+      })
+      if (!r.ok) {
+        res.status(404).json({ message: 'Mídia não disponível' })
+        return
+      }
+      const data = await r.json() as { base64?: string; mimetype?: string }
+      if (!data?.base64) {
+        res.status(404).json({ message: 'Mídia não disponível' })
+        return
+      }
+      const buffer = Buffer.from(data.base64, 'base64')
+      res.setHeader('Content-Type', data.mimetype || 'application/octet-stream')
+      res.setHeader('Cache-Control', 'public, max-age=86400')
+      res.setHeader('Content-Length', buffer.length)
+      res.send(buffer)
+      return
+    }
+
     // ── URLs normais (WAHA, etc.) ─────────────────────────────────────────────
     if (!isSafeUrl(url)) {
       logger.warn(`[MediaProxy] URL bloqueada (SSRF): ${url.substring(0, 100)}`)

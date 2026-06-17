@@ -28,15 +28,26 @@ async function findContactByPhone(userId: string, phone: string) {
 }
 
 /** Acha contato por telefone em qualquer usuário (modelo de número compartilhado).
- *  Ordena por createdAt para ser DETERMINÍSTICO — sem orderBy o Postgres pode
- *  retornar contatos diferentes a cada chamada quando há duplicados, gerando
- *  conversas duplicadas. */
+ *  Match PRECISO: número exato + variação do 9º dígito (celular BR). Não usa
+ *  "últimos 8 dígitos" (que misturava contatos de DDDs diferentes). Sempre
+ *  ordena por createdAt (determinístico) para não duplicar conversas. */
 async function findContactGlobal(phone: string) {
-  const exact = await prisma.contact.findFirst({ where: { phone }, orderBy: { createdAt: 'asc' } })
-  if (exact) return exact
-  const tail = phone.slice(-8)
-  if (tail.length < 6) return null
-  return prisma.contact.findFirst({ where: { phone: { contains: tail } }, orderBy: { createdAt: 'asc' } })
+  const digits = (phone || '').replace(/\D/g, '')
+  const candidates = [phone, digits].filter(Boolean)
+
+  // Variação do 9º dígito: 55 DDD [9] XXXXXXXX
+  const m = digits.match(/^55(\d{2})(\d{8,9})$/)
+  if (m) {
+    const ddd = m[1], rest = m[2]
+    if (rest.length === 9 && rest.startsWith('9')) candidates.push(`55${ddd}${rest.slice(1)}`)
+    else if (rest.length === 8) candidates.push(`55${ddd}9${rest}`)
+  }
+
+  for (const p of [...new Set(candidates)]) {
+    const c = await prisma.contact.findFirst({ where: { phone: p }, orderBy: { createdAt: 'asc' } })
+    if (c) return c
+  }
+  return null
 }
 
 async function resolveDbSession(sessionId: string) {
@@ -646,8 +657,8 @@ export class WhatsAppService {
         direction: 'OUT',
         type: msgType,
         textBody: file.filename,
-        // Guarda a própria mídia como data URL para exibir no chat
-        mediaUrl: `data:${file.mimetype};base64,${file.data}`,
+        // Referência à mídia no Evolution (não base64) — evita inchar o banco
+        mediaUrl: result?.externalId ? `evo:${session.id}:${result.externalId}` : null,
         externalMessageId: result?.externalId,
         sentAt: result?.sentAt || new Date(),
       },
@@ -699,9 +710,6 @@ export class WhatsAppService {
       ? (provider as any).sendAudio(session.id, to, audioData, mimetype)
       : provider.sendMessage(session.id, to, '[Áudio]')
 
-    const audioMime = mimetype || 'audio/ogg'
-    const audioDataUrl = audioData.startsWith('data:') ? audioData : `data:${audioMime};base64,${audioData}`
-
     const message = await prisma.message.create({
       data: {
         conversationId: conversation.id,
@@ -711,7 +719,8 @@ export class WhatsAppService {
         direction: 'OUT',
         type: 'AUDIO',
         textBody: null,
-        mediaUrl: audioDataUrl,
+        // Referência à mídia no Evolution (não base64)
+        mediaUrl: result?.externalId ? `evo:${session.id}:${result.externalId}` : null,
         externalMessageId: result?.externalId,
         sentAt: result?.sentAt || new Date(),
       },
