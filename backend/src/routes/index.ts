@@ -20,6 +20,7 @@ import chatFlowRoutes from './chatFlow.routes'
 import whatsappNumberRoutes from './whatsappNumber.routes'
 import templateRoutes from './template.routes'
 import callRoutes from './call.routes'
+import searchRoutes from './search.routes'
 
 const router = Router()
 
@@ -44,5 +45,6 @@ router.use('/flows', chatFlowRoutes)
 router.use('/whatsapp-numbers', whatsappNumberRoutes)
 router.use('/templates', templateRoutes)
 router.use('/calls', callRoutes)
+router.use('/search', searchRoutes)
 
 export default router

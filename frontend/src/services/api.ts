@@ -81,6 +81,11 @@ export const monitorApi = {
   },
 }
 
+// Busca global
+export const searchApi = {
+  search: (q: string) => api.get('/search', { params: { q } }),
+}
+
 // Ligações (registro de chamadas)
 export const callsApi = {
   list: (params: { contactId?: string; leadId?: string }) => api.get('/calls', { params }),

@@ -18,6 +18,7 @@ import FlowBuilder from './pages/FlowBuilder'
 import Monitor from './pages/Monitor'
 import Templates from './pages/Templates'
 import Settings from './pages/Settings'
+import Search from './pages/Search'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/crm" element={<CRM />} />
         <Route path="/contacts" element={<Contacts />} />
+        <Route path="/search" element={<Search />} />
         <Route path="/whatsapp" element={<WhatsAppConfig />} />
         <Route path="/roulette" element={<Roulette />} />
         <Route path="/team-chat" element={<InternalChat />} />
