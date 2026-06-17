@@ -86,6 +86,21 @@ export const searchApi = {
   search: (q: string) => api.get('/search', { params: { q } }),
 }
 
+// Tags
+export const tagsApi = {
+  list: () => api.get('/tags'),
+  create: (data: { name: string; color?: string }) => api.post('/tags', data),
+  remove: (id: string) => api.delete(`/tags/${id}`),
+}
+
+// Auto-tags (regras palavra-chave → tag)
+export const autoTagsApi = {
+  list: () => api.get('/auto-tags'),
+  create: (data: { keyword: string; tagId: string }) => api.post('/auto-tags', data),
+  toggle: (id: string, enabled: boolean) => api.patch(`/auto-tags/${id}`, { enabled }),
+  remove: (id: string) => api.delete(`/auto-tags/${id}`),
+}
+
 // Ligações (registro de chamadas)
 export const callsApi = {
   list: (params: { contactId?: string; leadId?: string }) => api.get('/calls', { params }),

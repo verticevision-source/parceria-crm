@@ -182,6 +182,17 @@ function setupMessageListener(): void {
         })
       }
 
+      // ── Auto-tag por palavra-chave (mensagens de texto) ──
+      try {
+        const { applyAutoTags } = await import('./autoTag.service')
+        const applied = await applyAutoTags(conversation.id, message.body)
+        if (applied.length > 0 && io) {
+          io.to(`user:${ownerId}`).emit('conversation:tags', { conversationId: conversation.id, tags: applied })
+        }
+      } catch (e) {
+        console.error('[auto-tag] erro:', e)
+      }
+
       // ── Chatbot (fluxo): roda antes da roleta/IA ──
       let botHandled = false
       if (message.type === 'TEXT') {

@@ -261,8 +261,23 @@ model Tag {
 
   contacts          ContactTag[]
   conversationTags  ConversationTag[]
+  autoTagRules      AutoTagRule[]
 
   @@map("tags")
+}
+
+// Regras de auto-tag: quando uma mensagem recebida contém a palavra-chave,
+// a tag é aplicada automaticamente na conversa
+model AutoTagRule {
+  id        String   @id @default(uuid())
+  keyword   String
+  tagId     String
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@map("auto_tag_rules")
 }
 
 model ContactTag {

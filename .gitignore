@@ -36,3 +36,9 @@ tmp/
 
 # Claude Code
 .claude/
+
+# DigitalOcean specs (contêm segredos em texto puro)
+do-app-spec.yaml
+do-evolution-spec.yaml
+do-frontend-spec.yaml
+evolution-custom/

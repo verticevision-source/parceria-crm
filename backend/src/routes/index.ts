@@ -21,6 +21,8 @@ import whatsappNumberRoutes from './whatsappNumber.routes'
 import templateRoutes from './template.routes'
 import callRoutes from './call.routes'
 import searchRoutes from './search.routes'
+import tagRoutes from './tag.routes'
+import autoTagRoutes from './autoTag.routes'
 
 const router = Router()
 
@@ -46,5 +48,7 @@ router.use('/whatsapp-numbers', whatsappNumberRoutes)
 router.use('/templates', templateRoutes)
 router.use('/calls', callRoutes)
 router.use('/search', searchRoutes)
+router.use('/tags', tagRoutes)
+router.use('/auto-tags', autoTagRoutes)
 
 export default router

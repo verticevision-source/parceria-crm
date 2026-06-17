@@ -4,12 +4,12 @@ import {
   X, Layers, Tag, AlignLeft, Hash, ToggleLeft, Calendar, ChevronDown, Sparkles
 } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
-import { usersApi, quickRepliesApi, pipelineApi, customFieldsApi, aiApi } from '../services/api'
+import { usersApi, quickRepliesApi, pipelineApi, customFieldsApi, aiApi, tagsApi, autoTagsApi } from '../services/api'
 import Logo from '../components/Logo'
 import { QuickReply, PipelineStage, CustomField } from '../types'
 import toast from 'react-hot-toast'
 
-type Tab = 'profile' | 'security' | 'quickreplies' | 'pipeline' | 'customfields' | 'ai'
+type Tab = 'profile' | 'security' | 'quickreplies' | 'pipeline' | 'customfields' | 'ai' | 'autotags'
 
 // ─── AI Settings tab ──────────────────────────────────────────────────────────
 function AISettingsTab() {
@@ -580,6 +580,162 @@ function CustomFieldsTab() {
 }
 
 // ─── Main Settings ────────────────────────────────────────────────────────────
+// ─── Auto-tags tab ────────────────────────────────────────────────────────────
+interface TagItem { id: string; name: string; color: string }
+interface AutoRule { id: string; keyword: string; enabled: boolean; tag: TagItem }
+
+const TAG_COLORS = ['#6366f1', '#ec4899', '#f59e0b', '#10b981', '#ef4444', '#06b6d4', '#8b5cf6', '#64748b']
+
+function AutoTagsTab() {
+  const [tags, setTags] = useState<TagItem[]>([])
+  const [rules, setRules] = useState<AutoRule[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newTag, setNewTag] = useState({ name: '', color: TAG_COLORS[0] })
+  const [newRule, setNewRule] = useState({ keyword: '', tagId: '' })
+
+  const load = async () => {
+    setLoading(true)
+    try {
+      const [t, r] = await Promise.all([tagsApi.list(), autoTagsApi.list()])
+      setTags(t.data.data)
+      setRules(r.data.data)
+    } catch { toast.error('Erro ao carregar') }
+    finally { setLoading(false) }
+  }
+  useEffect(() => { load() }, [])
+
+  const createTag = async () => {
+    if (!newTag.name.trim()) { toast.error('Informe o nome da tag'); return }
+    try {
+      await tagsApi.create(newTag)
+      setNewTag({ name: '', color: TAG_COLORS[0] })
+      toast.success('Tag criada')
+      load()
+    } catch { toast.error('Erro ao criar tag') }
+  }
+
+  const removeTag = async (id: string) => {
+    if (!confirm('Excluir esta tag? As regras que a usam também serão removidas.')) return
+    try { await tagsApi.remove(id); toast.success('Tag excluída'); load() }
+    catch { toast.error('Erro ao excluir') }
+  }
+
+  const createRule = async () => {
+    if (!newRule.keyword.trim() || !newRule.tagId) { toast.error('Informe a palavra-chave e a tag'); return }
+    try {
+      await autoTagsApi.create(newRule)
+      setNewRule({ keyword: '', tagId: '' })
+      toast.success('Regra criada')
+      load()
+    } catch { toast.error('Erro ao criar regra') }
+  }
+
+  const toggleRule = async (r: AutoRule) => {
+    try { await autoTagsApi.toggle(r.id, !r.enabled); load() }
+    catch { toast.error('Erro') }
+  }
+
+  const removeRule = async (id: string) => {
+    try { await autoTagsApi.remove(id); toast.success('Regra removida'); load() }
+    catch { toast.error('Erro ao remover') }
+  }
+
+  if (loading) return <div className="card max-w-2xl"><p className="text-text-muted text-sm">Carregando...</p></div>
+
+  return (
+    <div className="max-w-2xl space-y-6">
+      {/* Tags */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Tag size={18} className="text-primary-light" />
+          <h3 className="text-text-primary font-bold">Etiquetas (Tags)</h3>
+        </div>
+        <p className="text-text-muted text-xs mb-4">Crie etiquetas para classificar conversas.</p>
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <input
+            value={newTag.name}
+            onChange={(e) => setNewTag({ ...newTag, name: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') createTag() }}
+            placeholder="Nome da etiqueta (ex.: Interessado)"
+            className="input-field flex-1 min-w-[180px] py-2 text-sm"
+          />
+          <div className="flex items-center gap-1">
+            {TAG_COLORS.map((c) => (
+              <button key={c} onClick={() => setNewTag({ ...newTag, color: c })}
+                className={`w-6 h-6 rounded-full border-2 ${newTag.color === c ? 'border-white' : 'border-transparent'}`}
+                style={{ background: c }} />
+            ))}
+          </div>
+          <button onClick={createTag} className="btn-primary flex items-center gap-1 text-sm px-3 py-2">
+            <Plus size={15} /> Criar
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {tags.length === 0 && <p className="text-text-muted text-sm">Nenhuma etiqueta ainda.</p>}
+          {tags.map((t) => (
+            <span key={t.id} className="px-2.5 py-1 rounded-lg text-xs font-medium flex items-center gap-1.5"
+              style={{ background: t.color + '22', color: t.color, border: `1px solid ${t.color}55` }}>
+              {t.name}
+              <button onClick={() => removeTag(t.id)} className="hover:opacity-70"><X size={12} /></button>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* Regras */}
+      <div className="card">
+        <div className="flex items-center gap-2 mb-1">
+          <Hash size={18} className="text-primary-light" />
+          <h3 className="text-text-primary font-bold">Regras de Auto-etiqueta</h3>
+        </div>
+        <p className="text-text-muted text-xs mb-4">
+          Quando uma mensagem recebida contém a palavra-chave, a etiqueta é aplicada automaticamente na conversa.
+        </p>
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          <input
+            value={newRule.keyword}
+            onChange={(e) => setNewRule({ ...newRule, keyword: e.target.value })}
+            onKeyDown={(e) => { if (e.key === 'Enter') createRule() }}
+            placeholder="Palavra-chave (ex.: orçamento)"
+            className="input-field flex-1 min-w-[160px] py-2 text-sm"
+          />
+          <select value={newRule.tagId} onChange={(e) => setNewRule({ ...newRule, tagId: e.target.value })}
+            className="input-field py-2 text-sm min-w-[150px]">
+            <option value="">Escolha a etiqueta…</option>
+            {tags.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
+          <button onClick={createRule} className="btn-primary flex items-center gap-1 text-sm px-3 py-2">
+            <Plus size={15} /> Adicionar
+          </button>
+        </div>
+        <div className="space-y-2">
+          {rules.length === 0 && <p className="text-text-muted text-sm">Nenhuma regra cadastrada.</p>}
+          {rules.map((r) => (
+            <div key={r.id} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-tertiary/40">
+              <span className="text-text-secondary text-sm">contém</span>
+              <span className="text-text-primary text-sm font-semibold">"{r.keyword}"</span>
+              <span className="text-text-secondary text-sm">→</span>
+              <span className="px-2 py-0.5 rounded text-xs font-medium"
+                style={{ background: r.tag.color + '22', color: r.tag.color, border: `1px solid ${r.tag.color}55` }}>
+                {r.tag.name}
+              </span>
+              <div className="flex-1" />
+              <button onClick={() => toggleRule(r)}
+                title={r.enabled ? 'Ativa (clique para desativar)' : 'Inativa (clique para ativar)'}
+                className={`text-xs font-medium px-2 py-1 rounded ${r.enabled ? 'text-success' : 'text-text-muted'}`}>
+                {r.enabled ? 'Ativa' : 'Inativa'}
+              </button>
+              <button onClick={() => removeRule(r.id)} className="text-text-muted hover:text-danger">
+                <Trash2 size={15} />
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export default function Settings() {
   const { user, isAdmin } = useAuth()
   const [tab, setTab] = useState<Tab>('profile')
@@ -618,6 +774,7 @@ export default function Settings() {
     { id: 'quickreplies', label: 'Respostas Rápidas', icon: <Zap size={15} /> },
     { id: 'pipeline',     label: 'Pipeline',          icon: <Layers size={15} />,  adminOnly: true },
     { id: 'customfields', label: 'Campos Extra',      icon: <Tag size={15} />,     adminOnly: true },
+    { id: 'autotags',     label: 'Auto-etiquetas',    icon: <Hash size={15} />,    adminOnly: true },
     { id: 'ai',           label: 'IA',                icon: <Sparkles size={15} />, adminOnly: true },
   ]
 
@@ -732,6 +889,7 @@ export default function Settings() {
       {tab === 'quickreplies' && <QuickRepliesTab isAdmin={isAdmin} />}
       {tab === 'pipeline'     && isAdmin && <PipelineTab />}
       {tab === 'customfields' && isAdmin && <CustomFieldsTab />}
+      {tab === 'autotags'     && isAdmin && <AutoTagsTab />}
       {tab === 'ai'           && isAdmin && <AISettingsTab />}
     </div>
   )
