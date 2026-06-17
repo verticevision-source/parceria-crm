@@ -242,6 +242,11 @@ export const dashboardApi = {
   admin: () => api.get('/dashboard/admin'),
 }
 
+// Saúde do sistema (admin)
+export const systemApi = {
+  health: () => api.get('/system/health'),
+}
+
 // Quick Replies
 export const quickRepliesApi = {
   getAll: () => api.get('/quick-replies'),

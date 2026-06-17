@@ -8,7 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell, Legend,
 } from 'recharts'
-import { dashboardApi } from '../services/api'
+import { dashboardApi, systemApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardUser, DashboardAdmin } from '../types'
 import { PageLoader } from '../components/UI/LoadingSpinner'
@@ -106,10 +106,67 @@ const ChartTooltip = ({ active, payload, label }: {
   )
 }
 
+/* ── Saúde do sistema ── */
+interface HealthData {
+  db: { ok: boolean; latencyMs: number }
+  evolution: { ok: boolean; latencyMs: number }
+  sessions: { connected: number; total: number }
+  scheduled: { pending: number; failed24h: number }
+  uptimeSec: number
+  serverTime: string
+}
+
+function formatUptime(sec: number): string {
+  const d = Math.floor(sec / 86400)
+  const h = Math.floor((sec % 86400) / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  if (d > 0) return `${d}d ${h}h`
+  if (h > 0) return `${h}h ${m}min`
+  return `${m}min`
+}
+
+function HealthPanel({ health }: { health: HealthData }) {
+  const items = [
+    { label: 'Banco de dados', ok: health.db.ok, detail: `${health.db.latencyMs}ms` },
+    { label: 'Evolution API', ok: health.evolution.ok, detail: health.evolution.ok ? `${health.evolution.latencyMs}ms` : 'sem resposta' },
+    { label: 'WhatsApp', ok: health.sessions.connected > 0, detail: `${health.sessions.connected}/${health.sessions.total} online` },
+  ]
+  const allOk = items.every((i) => i.ok)
+  return (
+    <div className="card">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-text-primary font-bold flex items-center gap-2">
+          <span className={`w-2.5 h-2.5 rounded-full ${allOk ? 'bg-success' : 'bg-danger'} animate-pulse`} />
+          Saúde do Sistema
+        </h3>
+        <span className="text-text-muted text-xs">no ar há {formatUptime(health.uptimeSec)}</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {items.map((i) => (
+          <div key={i.label} className="flex items-center gap-3 p-3 rounded-lg border border-border bg-bg-tertiary/40">
+            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${i.ok ? 'bg-success' : 'bg-danger'}`} />
+            <div className="min-w-0">
+              <p className="text-text-primary text-sm font-medium">{i.label}</p>
+              <p className={`text-xs ${i.ok ? 'text-text-muted' : 'text-danger'}`}>{i.ok ? i.detail : 'OFFLINE — ' + i.detail}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+      {(health.scheduled.pending > 0 || health.scheduled.failed24h > 0) && (
+        <p className="text-text-muted text-xs mt-3">
+          Agendamentos: {health.scheduled.pending} pendente(s)
+          {health.scheduled.failed24h > 0 && <span className="text-danger"> · {health.scheduled.failed24h} falha(s) em 24h</span>}
+        </p>
+      )}
+    </div>
+  )
+}
+
 export default function Dashboard() {
   const { isAdmin } = useAuth()
   const [userData,  setUserData]  = useState<DashboardUser | null>(null)
   const [adminData, setAdminData] = useState<DashboardAdmin | null>(null)
+  const [health, setHealth] = useState<HealthData | null>(null)
   const [loading,   setLoading]   = useState(true)
 
   useEffect(() => {
@@ -119,6 +176,7 @@ export default function Dashboard() {
           const [uRes, aRes] = await Promise.all([dashboardApi.user(), dashboardApi.admin()])
           setUserData(uRes.data.data)
           setAdminData(aRes.data.data)
+          systemApi.health().then((r) => setHealth(r.data.data)).catch(() => {})
         } else {
           const res = await dashboardApi.user()
           setUserData(res.data.data)
@@ -208,6 +266,9 @@ export default function Dashboard() {
               <StatCard title="Total Mensagens"   value={adminData.messages.total}         icon={MessageSquare} color="warning" />
             </div>
           </div>
+
+          {/* Saúde do sistema */}
+          {health && <HealthPanel health={health} />}
 
           {/* Gráficos */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

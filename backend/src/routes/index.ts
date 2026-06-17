@@ -24,6 +24,7 @@ import searchRoutes from './search.routes'
 import tagRoutes from './tag.routes'
 import autoTagRoutes from './autoTag.routes'
 import scheduledMessageRoutes from './scheduledMessage.routes'
+import systemRoutes from './system.routes'
 
 const router = Router()
 
@@ -52,5 +53,6 @@ router.use('/search', searchRoutes)
 router.use('/tags', tagRoutes)
 router.use('/auto-tags', autoTagRoutes)
 router.use('/scheduled-messages', scheduledMessageRoutes)
+router.use('/system', systemRoutes)
 
 export default router
