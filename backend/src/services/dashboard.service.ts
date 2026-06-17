@@ -72,6 +72,10 @@ export class DashboardService {
       leadsPerStage,
       conversationsPerUser,
       leadsPerUser,
+      wonLeads,
+      lostLeads,
+      conversationsToday,
+      messagesToday,
     ] = await Promise.all([
       prisma.user.count(),
       prisma.user.count({ where: { isActive: true } }),
@@ -101,13 +105,19 @@ export class DashboardService {
         },
         orderBy: { createdAt: 'asc' },
       }),
+      prisma.lead.count({ where: { status: 'WON' } }),
+      prisma.lead.count({ where: { status: 'LOST' } }),
+      prisma.conversation.count({ where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
+      prisma.message.count({ where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } } }),
     ])
+
+    const conversionRate = totalLeads > 0 ? Math.round((wonLeads / totalLeads) * 100) : 0
 
     return {
       users: { total: totalUsers, active: activeUsers, connectedSessions },
-      conversations: { total: totalConversations },
-      leads: { total: totalLeads },
-      messages: { total: totalMessages },
+      conversations: { total: totalConversations, today: conversationsToday },
+      leads: { total: totalLeads, won: wonLeads, lost: lostLeads, conversionRate },
+      messages: { total: totalMessages, today: messagesToday },
       leadsPerStage: leadsPerStage.map((s) => ({
         name: s.name,
         color: s.color,

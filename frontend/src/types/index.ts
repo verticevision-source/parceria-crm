@@ -178,9 +178,9 @@ export interface DashboardUser {
 
 export interface DashboardAdmin {
   users: { total: number; active: number; connectedSessions: number }
-  conversations: { total: number }
-  leads: { total: number }
-  messages: { total: number }
+  conversations: { total: number; today?: number }
+  leads: { total: number; won?: number; lost?: number; conversionRate?: number }
+  messages: { total: number; today?: number }
   leadsPerStage: { name: string; color: string; count: number }[]
   conversationsPerUser: { name: string; count: number }[]
   leadsPerUser: { name: string; count: number }[]

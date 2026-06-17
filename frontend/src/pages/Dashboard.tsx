@@ -198,10 +198,14 @@ export default function Dashboard() {
               Visão Geral — Admin
             </h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-              <StatCard title="Usuários"          value={adminData.users.total}            icon={Users}         color="gold"    />
-              <StatCard title="Usuários Ativos"   value={adminData.users.active}           icon={Users}         color="success" />
+              <StatCard title="Usuários Ativos"   value={adminData.users.active}           icon={Users}         color="gold"    />
               <StatCard title="WhatsApp Online"   value={adminData.users.connectedSessions} icon={Wifi}         color="info"    />
-              <StatCard title="Total Mensagens"   value={adminData.messages.total}         icon={MessageSquare} color="primary" />
+              <StatCard title="Taxa de Conversão" value={`${adminData.leads.conversionRate ?? 0}%`} icon={TrendingUp} color="success" subtitle={`${adminData.leads.won ?? 0} ganhos · ${adminData.leads.lost ?? 0} perdidos`} />
+              <StatCard title="Total Leads"       value={adminData.leads.total}            icon={Briefcase}     color="primary" />
+              <StatCard title="Conversas Hoje"    value={adminData.conversations.today ?? 0} icon={MessageCircle} color="info"  />
+              <StatCard title="Mensagens Hoje"    value={adminData.messages.today ?? 0}    icon={MessageSquare} color="primary" />
+              <StatCard title="Total Conversas"   value={adminData.conversations.total}    icon={MessageSquare} color="gold"    />
+              <StatCard title="Total Mensagens"   value={adminData.messages.total}         icon={MessageSquare} color="warning" />
             </div>
           </div>
 
