@@ -67,6 +67,11 @@ function ConversationItem({
   isSelected: boolean
   onClick: () => void
 }) {
+  // SLA: conversa aberta, com mensagens não lidas e parada há um tempo = aguardando resposta
+  const waitingMin = conversation.status === 'OPEN' && conversation.unreadCount > 0 && conversation.lastMessageAt
+    ? Math.floor((Date.now() - new Date(conversation.lastMessageAt).getTime()) / 60000)
+    : 0
+  const isStalled = waitingMin >= 15
   return (
     <button
       onClick={onClick}
@@ -96,6 +101,11 @@ function ConversationItem({
         </p>
         <div className="mt-1.5 flex items-center gap-1 flex-wrap">
           <StatusBadge status={conversation.status} />
+          {isStalled && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 bg-danger/15 text-danger border border-danger/40 animate-pulse">
+              <Clock size={10} /> {waitingMin >= 60 ? `${Math.floor(waitingMin / 60)}h` : `${waitingMin}min`}
+            </span>
+          )}
           {conversation.tags?.slice(0, 2).map((ct) => (
             <span
               key={ct.id}
@@ -127,6 +137,7 @@ export default function Attendance() {
   const [sending, setSending] = useState(false)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
+  const [, setSlaTick] = useState(0) // força recálculo do SLA a cada 60s
 
   // Roleta
   const [rouletteActive, setRouletteActive] = useState(false)
@@ -169,6 +180,12 @@ export default function Attendance() {
 
   // Keep selectedRef in sync
   useEffect(() => { selectedRef.current = selected }, [selected])
+
+  // SLA: re-renderiza a cada 60s para o tempo de espera avançar
+  useEffect(() => {
+    const t = setInterval(() => setSlaTick((n) => n + 1), 60000)
+    return () => clearInterval(t)
+  }, [])
 
   // Request notification permission once
   useEffect(() => {
@@ -676,6 +693,12 @@ export default function Attendance() {
     return name.includes(search.toLowerCase())
   })
 
+  // SLA: quantas conversas estão aguardando resposta há 15 min+
+  const stalledCount = conversations.filter((c) =>
+    c.status === 'OPEN' && c.unreadCount > 0 && c.lastMessageAt &&
+    (Date.now() - new Date(c.lastMessageAt).getTime()) / 60000 >= 15
+  ).length
+
   const filteredQR = quickReplies.filter((qr) =>
     qr.title.toLowerCase().includes(qrSearch.toLowerCase()) ||
     qr.body.toLowerCase().includes(qrSearch.toLowerCase())
@@ -737,6 +760,12 @@ export default function Attendance() {
               </button>
             ))}
           </div>
+          {stalledCount > 0 && (
+            <div className="mt-3 flex items-center gap-2 px-3 py-2 rounded-lg bg-danger/10 border border-danger/30 text-danger text-xs font-semibold">
+              <Clock size={14} className="animate-pulse flex-shrink-0" />
+              {stalledCount} {stalledCount === 1 ? 'conversa aguardando' : 'conversas aguardando'} resposta há 15min+
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
