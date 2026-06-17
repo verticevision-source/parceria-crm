@@ -93,6 +93,15 @@ export const tagsApi = {
   remove: (id: string) => api.delete(`/tags/${id}`),
 }
 
+// Mensagens agendadas
+export const schedulesApi = {
+  list: (conversationId?: string) =>
+    api.get('/scheduled-messages', { params: conversationId ? { conversationId } : {} }),
+  create: (data: { toPhone: string; body: string; sendAt: string; conversationId?: string; contactId?: string }) =>
+    api.post('/scheduled-messages', data),
+  cancel: (id: string) => api.delete(`/scheduled-messages/${id}`),
+}
+
 // Auto-tags (regras palavra-chave → tag)
 export const autoTagsApi = {
   list: () => api.get('/auto-tags'),

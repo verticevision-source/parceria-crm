@@ -4,7 +4,7 @@ import {
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
   Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText
 } from 'lucide-react'
-import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
@@ -154,6 +154,12 @@ export default function Attendance() {
   const [showAttachMenu, setShowAttachMenu] = useState(false)
   const [showLocation, setShowLocation] = useState(false)
   const [locInput, setLocInput] = useState('')
+
+  // Agendamento de mensagens
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleAt, setScheduleAt] = useState('')
+  const [scheduledList, setScheduledList] = useState<Array<{ id: string; body: string; sendAt: string; status: string }>>([])
+  const scheduledCount = scheduledList.filter((s) => s.status === 'PENDING').length
 
   // Ligações
   const [calls, setCalls] = useState<Array<{ id: string; phone: string; direction: string; outcome: string; durationSec: number; notes?: string; createdAt: string; user?: { name: string } }>>([])
@@ -648,6 +654,52 @@ export default function Attendance() {
     callsApi.list({ contactId: cid }).then((r) => setCalls(r.data.data)).catch(() => setCalls([]))
   }, [selected?.contact?.id])
 
+  // ── Mensagens agendadas ─────────────────────────────────────────────────────
+  const loadSchedules = useCallback(() => {
+    if (!selected?.id) { setScheduledList([]); return }
+    schedulesApi.list(selected.id).then((r) => setScheduledList(r.data.data)).catch(() => setScheduledList([]))
+  }, [selected?.id])
+
+  useEffect(() => { loadSchedules() }, [loadSchedules])
+
+  const openScheduleModal = () => {
+    if (!selected?.contact?.phone) { toast.error('Selecione uma conversa'); return }
+    // default: daqui a 1 hora, em horário local
+    const d = new Date(Date.now() + 60 * 60 * 1000)
+    d.setSeconds(0, 0)
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+    setScheduleAt(local)
+    setShowScheduleModal(true)
+  }
+
+  const scheduleMessage = async () => {
+    if (!selected?.contact?.phone) return
+    if (!input.trim()) { toast.error('Digite a mensagem antes de agendar'); return }
+    if (!scheduleAt) { toast.error('Escolha a data e a hora'); return }
+    const when = new Date(scheduleAt)
+    if (when.getTime() < Date.now()) { toast.error('A data/hora deve ser no futuro'); return }
+    try {
+      await schedulesApi.create({
+        toPhone: selected.contact.phone,
+        body: input.trim(),
+        sendAt: when.toISOString(),
+        conversationId: selected.id,
+        contactId: selected.contact.id,
+      })
+      toast.success(`Mensagem agendada para ${when.toLocaleString('pt-BR')}`)
+      setInput('')
+      setShowScheduleModal(false)
+      loadSchedules()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao agendar')
+    }
+  }
+
+  const cancelSchedule = async (id: string) => {
+    try { await schedulesApi.cancel(id); toast.success('Agendamento cancelado'); loadSchedules() }
+    catch { toast.error('Erro ao cancelar') }
+  }
+
   const startCall = () => {
     const phone = selected?.contact?.phone
     if (!phone) return
@@ -1136,6 +1188,19 @@ export default function Attendance() {
                     >
                       <Paperclip size={22} />
                     </button>
+                    <button
+                      onClick={openScheduleModal}
+                      disabled={sending}
+                      className="p-2.5 rounded-xl transition-colors text-text-muted hover:text-text-secondary hover:bg-bg-hover relative"
+                      title="Agendar mensagem"
+                    >
+                      <Clock size={22} />
+                      {scheduledCount > 0 && (
+                        <span className="absolute -top-0.5 -right-0.5 w-4 h-4 bg-primary text-white text-[9px] rounded-full flex items-center justify-center font-bold">
+                          {scheduledCount > 9 ? '9+' : scheduledCount}
+                        </span>
+                      )}
+                    </button>
                   </div>
 
                   {/* Campo de texto — maior */}
@@ -1311,6 +1376,56 @@ export default function Attendance() {
       )}
 
       {/* Modal de localização */}
+      {/* Modal agendar mensagem */}
+      {showScheduleModal && (
+        <div className="modal-overlay" onClick={() => setShowScheduleModal(false)}>
+          <div className="modal-panel max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <Clock size={18} className="text-primary" /> Agendar mensagem
+              </h3>
+              <button onClick={() => setShowScheduleModal(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              A mensagem digitada será enviada automaticamente na data e hora escolhidas.
+            </p>
+            <div className="mb-3 p-3 rounded-lg bg-bg-tertiary/50 border border-border text-sm text-text-secondary max-h-24 overflow-y-auto whitespace-pre-wrap">
+              {input.trim() || <span className="text-text-muted italic">Digite a mensagem no campo de texto antes de agendar.</span>}
+            </div>
+            <label className="block text-xs font-medium text-text-secondary mb-1.5">Quando enviar</label>
+            <input
+              type="datetime-local"
+              value={scheduleAt}
+              onChange={(e) => setScheduleAt(e.target.value)}
+              className="input-field w-full mb-4"
+            />
+            <button onClick={scheduleMessage} disabled={!input.trim()}
+              className="btn-primary w-full flex items-center justify-center gap-2">
+              <Clock size={15} /> Agendar envio
+            </button>
+
+            {scheduledList.filter((s) => s.status === 'PENDING').length > 0 && (
+              <div className="mt-5 pt-4 border-t border-border">
+                <p className="text-xs font-bold uppercase tracking-wider text-text-muted mb-2">Agendadas para esta conversa</p>
+                <div className="space-y-2 max-h-40 overflow-y-auto">
+                  {scheduledList.filter((s) => s.status === 'PENDING').map((s) => (
+                    <div key={s.id} className="flex items-start gap-2 p-2 rounded-lg bg-bg-tertiary/40 border border-border">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-primary text-xs truncate">{s.body}</p>
+                        <p className="text-text-muted text-[10px] mt-0.5">{new Date(s.sendAt).toLocaleString('pt-BR')}</p>
+                      </div>
+                      <button onClick={() => cancelSchedule(s.id)} className="text-text-muted hover:text-danger flex-shrink-0" title="Cancelar">
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {showLocation && (
         <div className="modal-overlay" onClick={() => setShowLocation(false)}>
           <div className="modal-panel max-w-md p-6" onClick={(e) => e.stopPropagation()}>

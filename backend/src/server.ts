@@ -61,6 +61,11 @@ setInterval(async () => {
   } catch { /* silencioso */ }
 }, 5 * 60 * 1000)
 
+// Poller de mensagens agendadas
+import('./services/scheduledMessage.service')
+  .then(({ ScheduledMessageService }) => ScheduledMessageService.start())
+  .catch((e) => logger.error('[scheduler] falha ao iniciar:', e))
+
 httpServer.listen(PORT, () => {
   logger.info(`🚀 Servidor rodando na porta ${PORT}`)
   logger.info(`📡 Socket.IO ativo`)

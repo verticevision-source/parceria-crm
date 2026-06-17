@@ -266,6 +266,24 @@ model Tag {
   @@map("tags")
 }
 
+// Mensagens agendadas (enviadas automaticamente na data/hora marcada)
+model ScheduledMessage {
+  id             String    @id @default(uuid())
+  userId         String
+  conversationId String?
+  contactId      String?
+  toPhone        String
+  body           String    @db.Text
+  sendAt         DateTime
+  status         String    @default("PENDING") // PENDING | SENT | FAILED | CANCELED
+  error          String?   @db.Text
+  sentAt         DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([status, sendAt])
+  @@map("scheduled_messages")
+}
+
 // Regras de auto-tag: quando uma mensagem recebida contém a palavra-chave,
 // a tag é aplicada automaticamente na conversa
 model AutoTagRule {
