@@ -45,6 +45,7 @@ export const usersApi = {
   deactivate: (id: string) => api.patch(`/users/${id}/deactivate`),
   remove: (id: string) => api.delete(`/users/${id}`),
   setAi: (id: string, enabled: boolean) => api.patch(`/users/${id}/ai`, { enabled }),
+  syncFichaLinks: () => api.post('/users/sync-ficha-links'),
 }
 
 // IA

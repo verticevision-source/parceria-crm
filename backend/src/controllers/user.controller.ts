@@ -39,6 +39,11 @@ export class UserController {
     res.status(201).json({ success: true, data: user })
   }
 
+  static async syncFichaLinks(_req: AuthRequest, res: Response): Promise<void> {
+    const result = await UserService.syncFichaLinks()
+    res.json({ success: true, data: result })
+  }
+
   static async update(req: AuthRequest, res: Response): Promise<void> {
     const parse = updateSchema.safeParse(req.body)
     if (!parse.success) {

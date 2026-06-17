@@ -3,6 +3,32 @@ import { prisma } from '../config/database'
 import { authConfig } from '../config/auth'
 
 export class UserService {
+  /** Sincroniza os links de ficha dos vendedores a partir do Parceria Financeira (por e-mail). */
+  static async syncFichaLinks() {
+    const url = process.env.FINANCEIRO_API_URL
+    const key = process.env.INTEGRATION_KEY
+    if (!url || !key) throw new Error('Integração com o financeiro não configurada (FINANCEIRO_API_URL / INTEGRATION_KEY)')
+
+    const res = await fetch(`${url.replace(/\/$/, '')}/api/integration/sellers`, {
+      headers: { 'x-integration-key': key },
+    })
+    if (!res.ok) throw new Error(`Falha ao buscar vendedores do financeiro (HTTP ${res.status})`)
+
+    const data = await res.json() as { sellers?: Array<{ email: string; fichaLink: string | null }> }
+    let updated = 0, semFicha = 0, semCadastro = 0
+    for (const s of data.sellers || []) {
+      if (!s.email) continue
+      if (!s.fichaLink) { semFicha++; continue }
+      const r = await prisma.user.updateMany({
+        where: { email: { equals: s.email, mode: 'insensitive' } },
+        data: { fichaLink: s.fichaLink },
+      })
+      if (r.count > 0) updated += r.count
+      else semCadastro++
+    }
+    return { total: data.sellers?.length || 0, updated, semFicha, semCadastro }
+  }
+
   static async findAll() {
     return prisma.user.findMany({
       select: {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2, Sparkles } from 'lucide-react'
+import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2, Sparkles, RefreshCw } from 'lucide-react'
 import { usersApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { User as UserType } from '../types'
@@ -33,6 +33,20 @@ export default function Users() {
   }
 
   useEffect(() => { load() }, [])
+
+  const [syncing, setSyncing] = useState(false)
+  const syncFichas = async () => {
+    setSyncing(true)
+    try {
+      const res = await usersApi.syncFichaLinks()
+      const d = res.data.data
+      toast.success(`Fichas sincronizadas: ${d.updated} atualizado(s)${d.semCadastro ? `, ${d.semCadastro} vendedor(es) sem conta no CRM` : ''}`)
+      load()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao sincronizar (verifique a configuração da integração)'
+      toast.error(msg)
+    } finally { setSyncing(false) }
+  }
 
   const openCreate = () => {
     setEditing(null)
@@ -122,10 +136,16 @@ export default function Users() {
           <h1 className="text-2xl font-bold text-text-primary">Usuários</h1>
           <p className="text-text-muted text-sm mt-1">{users.length} usuário(s)</p>
         </div>
-        <button onClick={openCreate} className="btn-primary flex items-center gap-2">
-          <Plus size={16} />
-          Novo Usuário
-        </button>
+        <div className="flex gap-2">
+          <button onClick={syncFichas} disabled={syncing} className="btn-ghost border border-border flex items-center gap-2">
+            <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
+            {syncing ? 'Sincronizando...' : 'Sincronizar fichas'}
+          </button>
+          <button onClick={openCreate} className="btn-primary flex items-center gap-2">
+            <Plus size={16} />
+            Novo Usuário
+          </button>
+        </div>
       </div>
 
       <div className="card overflow-hidden p-0">

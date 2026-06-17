@@ -9,6 +9,7 @@ const router = Router()
 router.use(authMiddleware, adminMiddleware)
 
 router.get('/', asyncHandler(UserController.findAll))
+router.post('/sync-ficha-links', asyncHandler(UserController.syncFichaLinks))
 router.post('/', asyncHandler(UserController.create))
 router.get('/:id', asyncHandler(UserController.findById))
 router.put('/:id', asyncHandler(UserController.update))
