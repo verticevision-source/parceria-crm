@@ -92,44 +92,38 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       password: process.env.PROXY_PASSWORD || '',
     } : undefined
 
-    // Tenta criar a instância
+    // Cria a instância (ignora se já existe)
     try {
       await this.req('POST', '/instance/create', {
         instanceName: sessionId,
         integration: 'WHATSAPP-BAILEYS',
         ...(proxyConfig && { proxy: proxyConfig }),
-        ...(webhookUrl && {
-          webhook: {
-            url: webhookUrl,
-            byEvents: false,
-            base64: true,        // mídia vem como base64 no webhook
-            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
-          },
-        }),
       })
       logger.info(`[Evolution] Instância criada: ${sessionId}${proxyConfig ? ' (com proxy)' : ''}`)
     } catch {
-      // Instância já existe — atualiza webhook e proxy
-      logger.info(`[Evolution] Instância já existe, atualizando webhook: ${sessionId}`)
-      if (webhookUrl) {
-        try {
-          await this.req('POST', `/webhook/set/${sessionId}`, {
-            webhook: {
-              enabled: true,
-              url: webhookUrl,
-              webhookByEvents: false,
-              webhookBase64: true,
-              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
-            },
-          })
-        } catch {}
+      logger.info(`[Evolution] Instância já existe: ${sessionId}`)
+    }
+
+    // SEMPRE configura o webhook (formato Evolution v2.3.x) — garante que as
+    // mensagens e atualizações de conexão cheguem ao CRM (com o token)
+    if (webhookUrl) {
+      try {
+        await this.req('POST', `/webhook/set/${sessionId}`, {
+          webhook: {
+            enabled: true,
+            url: webhookUrl,
+            webhookByEvents: false,
+            webhookBase64: true,
+            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
+          },
+        })
+        logger.info(`[Evolution] Webhook configurado: ${sessionId}`)
+      } catch {
+        logger.warn(`[Evolution] Falha ao configurar webhook: ${sessionId}`)
       }
-      // Atualiza proxy na instância existente, se configurado
-      if (proxyConfig) {
-        try {
-          await this.req('POST', `/proxy/set/${sessionId}`, { proxy: proxyConfig })
-        } catch {}
-      }
+    }
+    if (proxyConfig) {
+      try { await this.req('POST', `/proxy/set/${sessionId}`, { proxy: proxyConfig }) } catch {}
     }
 
     // Dispara geração do QR e captura imediatamente se disponível
