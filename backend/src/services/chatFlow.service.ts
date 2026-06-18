@@ -124,10 +124,11 @@ export class ChatFlowService {
       }
 
       if (t === 'condition') {
-        const reply = (session.lastReply || '').toLowerCase()
+        const norm = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
+        const reply = norm(session.lastReply || '')
         const outs = outEdges(currentId)
-        // tenta casar pela label/keyword da aresta
-        let chosen = outs.find((e) => e.label && reply.includes(e.label.toLowerCase()))
+        // tenta casar pela label/keyword da aresta (ignora acentos)
+        let chosen = outs.find((e) => e.label && e.label.trim() !== '' && reply.includes(norm(e.label)))
         if (!chosen) chosen = outs.find((e) => (e.label || '').toLowerCase() === 'default' || (e.sourceHandle === 'else'))
         if (!chosen) chosen = outs[0]
         currentId = chosen?.target || null
@@ -137,12 +138,35 @@ export class ChatFlowService {
       if (t === 'handoff') {
         if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
         await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
-        // Encaminha para a roleta
+        // Encaminha para a roleta (time específico se node.data.teamId)
         try {
           const { RouletteService } = await import('./roulette.service')
-          await RouletteService.distribute({ contactId: session.contactId, source: 'chatbot', notes: 'Qualificado pelo robô' })
+          await RouletteService.distribute({
+            contactId: session.contactId,
+            source: 'chatbot',
+            notes: 'Qualificado pelo robô',
+            teamId: node.data.teamId || undefined,
+            requireActive: node.data.teamId ? false : undefined,
+          })
         } catch (e: any) {
           logger.warn(`[Flow] Handoff sem agente ativo: ${e.message}`)
+        }
+        return
+      }
+
+      // Encaminha para a roleta da CIDADE (casa a última resposta com um time)
+      if (t === 'cityHandoff') {
+        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
+        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
+        try {
+          const { RouletteService } = await import('./roulette.service')
+          await RouletteService.distributeToCity({
+            contactId: session.contactId,
+            cityText: session.lastReply || '',
+            source: 'robo-cidade',
+          })
+        } catch (e: any) {
+          logger.warn(`[Flow] cityHandoff sem agente: ${e.message}`)
         }
         return
       }

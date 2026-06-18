@@ -113,9 +113,9 @@ export class RouletteController {
 
   /** POST /api/roulette/teams */
   static async createTeam(req: AuthRequest, res: Response): Promise<void> {
-    const { name, description, color } = req.body
+    const { name, description, color, keywords, isGeneral } = req.body
     if (!name) { res.status(400).json({ success: false, message: 'name é obrigatório' }); return }
-    const team = await RouletteService.createTeam({ name, description, color })
+    const team = await RouletteService.createTeam({ name, description, color, keywords, isGeneral })
     res.status(201).json({ success: true, data: team })
   }
 

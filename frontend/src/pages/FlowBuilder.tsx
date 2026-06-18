@@ -8,17 +8,21 @@ import { flowsApi } from '../services/api'
 import toast from 'react-hot-toast'
 import {
   Workflow, Plus, Save, Trash2, MessageCircle, HelpCircle, GitBranch,
-  UserCheck, Play, X, ArrowLeft, Power
+  UserCheck, Play, X, ArrowLeft, Power, MapPin
 } from 'lucide-react'
 
 // ── Tipos de nó ──
 const NODE_TYPES_META: Record<string, { label: string; color: string; icon: any }> = {
-  start:     { label: 'Início',       color: '#10b981', icon: Play },
-  message:   { label: 'Mensagem',     color: '#6366f1', icon: MessageCircle },
-  question:  { label: 'Pergunta',     color: '#f59e0b', icon: HelpCircle },
-  condition: { label: 'Condição',     color: '#8b5cf6', icon: GitBranch },
-  handoff:   { label: 'Encaminhar',   color: '#ec4899', icon: UserCheck },
+  start:       { label: 'Início',       color: '#10b981', icon: Play },
+  message:     { label: 'Mensagem',     color: '#6366f1', icon: MessageCircle },
+  question:    { label: 'Pergunta',     color: '#f59e0b', icon: HelpCircle },
+  condition:   { label: 'Condição',     color: '#8b5cf6', icon: GitBranch },
+  handoff:     { label: 'Encaminhar',   color: '#ec4899', icon: UserCheck },
+  cityHandoff: { label: 'Por Cidade',   color: '#14b8a6', icon: MapPin },
 }
+
+// Nós que encerram o robô (sem saída)
+const TERMINAL_NODES = ['handoff', 'cityHandoff']
 
 // ── Nó custom ──
 function FlowNodeComp({ data, selected }: NodeProps) {
@@ -39,7 +43,7 @@ function FlowNodeComp({ data, selected }: NodeProps) {
       ) : (
         <p className="text-[11px] text-text-muted">entrada do fluxo</p>
       )}
-      {data.type !== 'handoff' && <Handle type="source" position={Position.Bottom} style={{ background: meta.color }} />}
+      {!TERMINAL_NODES.includes(data.type) && <Handle type="source" position={Position.Bottom} style={{ background: meta.color }} />}
     </div>
   )
 }
@@ -271,11 +275,11 @@ export default function FlowBuilder() {
               <p className="text-xs text-text-muted">Ponto de entrada do fluxo. Conecte-o ao primeiro passo.</p>
             )}
 
-            {['message', 'question', 'handoff'].includes(selectedNode.data.type) && (
+            {['message', 'question', 'handoff', 'cityHandoff'].includes(selectedNode.data.type) && (
               <div>
                 <label className="text-xs text-text-muted">
                   {selectedNode.data.type === 'question' ? 'Pergunta ao cliente' :
-                   selectedNode.data.type === 'handoff' ? 'Mensagem antes de encaminhar (opcional)' : 'Mensagem'}
+                   (selectedNode.data.type === 'handoff' || selectedNode.data.type === 'cityHandoff') ? 'Mensagem antes de encaminhar (opcional)' : 'Mensagem'}
                 </label>
                 <textarea
                   value={selectedNode.data.text || ''}
@@ -289,6 +293,13 @@ export default function FlowBuilder() {
                 )}
                 {selectedNode.data.type === 'handoff' && (
                   <p className="text-[11px] text-text-muted mt-1">Encerra o robô e envia o lead para a roleta.</p>
+                )}
+                {selectedNode.data.type === 'cityHandoff' && (
+                  <p className="text-[11px] text-text-muted mt-1">
+                    Casa a <b>última resposta do cliente</b> (a cidade) com o nome/apelidos de um Time
+                    e encaminha para os vendedores daquele time. Sem correspondência, usa o time marcado
+                    como <b>Geral</b>. Coloque este nó logo após uma <b>Pergunta</b> tipo "De qual cidade você é?".
+                  </p>
                 )}
               </div>
             )}

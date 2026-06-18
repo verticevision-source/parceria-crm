@@ -377,6 +377,8 @@ model RouletteTeam {
   description String?
   color       String   @default("#6366f1")
   isActive    Boolean  @default(true)
+  keywords    String?  @db.Text  // apelidos/grafias da cidade p/ casar a resposta do cliente (separados por vírgula)
+  isGeneral   Boolean  @default(false) // grupo geral: recebe leads de cidades não cadastradas
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

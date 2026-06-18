@@ -111,11 +111,18 @@ export class RouletteService {
     })
   }
 
-  static async createTeam(data: { name: string; description?: string; color?: string }) {
+  static async createTeam(data: { name: string; description?: string; color?: string; keywords?: string; isGeneral?: boolean }) {
+    // Só um grupo geral por vez
+    if (data.isGeneral) {
+      await prisma.rouletteTeam.updateMany({ data: { isGeneral: false } })
+    }
     return prisma.rouletteTeam.create({ data })
   }
 
-  static async updateTeam(id: string, data: { name?: string; description?: string; color?: string; isActive?: boolean }) {
+  static async updateTeam(id: string, data: { name?: string; description?: string; color?: string; isActive?: boolean; keywords?: string; isGeneral?: boolean }) {
+    if (data.isGeneral === true) {
+      await prisma.rouletteTeam.updateMany({ where: { id: { not: id } }, data: { isGeneral: false } })
+    }
     return prisma.rouletteTeam.update({ where: { id }, data })
   }
 
@@ -154,23 +161,62 @@ export class RouletteService {
 
   // ── Distribui um lead para o próximo agente ativo ─────────────────────────
 
+  // ── Distribui um lead para os vendedores de uma cidade ───────────────────
+  // Casa a resposta do cliente (cityText) com o nome/apelidos de um time.
+  // Se não casar, usa o time marcado como "geral". Se não houver, qualquer agente ativo.
+  static async distributeToCity(input: {
+    contactId: string
+    cityText: string
+    source?: string
+    notes?: string
+  }): Promise<{ lead: any; assignedUser: any }> {
+    const norm = (s: string) => (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+    const city = norm(input.cityText)
+
+    const teams = await prisma.rouletteTeam.findMany({ where: { isActive: true } })
+    let match: typeof teams[number] | null = null
+    if (city) {
+      for (const t of teams) {
+        const terms = [t.name, ...((t.keywords || '').split(','))]
+          .map((x) => norm(x)).filter(Boolean)
+        if (terms.some((term) => city.includes(term))) { match = t; break }
+      }
+    }
+    if (!match) match = teams.find((t) => t.isGeneral) || null
+
+    const notes = input.notes || (match ? `Cidade: ${input.cityText} → ${match.name}` : `Cidade: ${input.cityText} (geral)`)
+    // Cidade casada/geral: distribui entre os vendedores do time (mesmo que não estejam "Na Roleta")
+    return RouletteService.distribute({
+      contactId: input.contactId,
+      source: input.source || 'robo-cidade',
+      notes,
+      teamId: match?.id,
+      requireActive: !match, // se caiu sem time (último recurso), exige agente ativo
+    })
+  }
+
   static async distribute(input: {
     contactId: string
     campaignId?: string
     source?: string
     notes?: string
     pipelineStageId?: string
+    teamId?: string
+    requireActive?: boolean
   }): Promise<{ lead: any; assignedUser: any }> {
 
-    // Se tem campanha, descobre o time dela para filtrar agentes
-    let teamId: string | null = null
-    if (input.campaignId) {
+    // teamId explícito tem prioridade; senão usa o time da campanha
+    let teamId: string | null = input.teamId ?? null
+    if (!teamId && input.campaignId) {
       const campaign = await prisma.campaign.findUnique({ where: { id: input.campaignId } })
       teamId = campaign?.teamId ?? null
     }
 
-    // Filtra por time via many-to-many
-    const whereAgents: any = { isActive: true }
+    // Por padrão exige agente ativo; no roteamento por cidade aceitamos os
+    // vendedores do time mesmo fora da roleta (requireActive=false)
+    const requireActive = input.requireActive !== false
+    const whereAgents: any = {}
+    if (requireActive) whereAgents.isActive = true
     if (teamId) {
       whereAgents.teams = { some: { teamId } }
     }

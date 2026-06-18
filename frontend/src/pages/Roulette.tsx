@@ -13,6 +13,8 @@ interface Team {
   description?: string
   color: string
   isActive: boolean
+  keywords?: string | null
+  isGeneral?: boolean
   _count: { agents: number; campaigns: number }
 }
 
@@ -72,11 +74,11 @@ export default function Roulette() {
 
   // Modal novo time
   const [showNewTeam, setShowNewTeam] = useState(false)
-  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1' })
+  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
 
   // Edição
   const [editTeam, setEditTeam] = useState<Team | null>(null)
-  const [editTeamForm, setEditTeamForm] = useState({ name: '', description: '', color: '#6366f1' })
+  const [editTeamForm, setEditTeamForm] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null)
   const [editCampForm, setEditCampForm] = useState({ name: '', source: '', teamId: '', description: '' })
 
@@ -160,7 +162,7 @@ export default function Roulette() {
       await api.post('/roulette/teams', newTeam)
       toast.success('Time criado!')
       setShowNewTeam(false)
-      setNewTeam({ name: '', description: '', color: '#6366f1' })
+      setNewTeam({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
       loadData()
     } catch {
       toast.error('Erro ao criar time')
@@ -180,7 +182,10 @@ export default function Roulette() {
 
   function openEditTeam(team: Team) {
     setEditTeam(team)
-    setEditTeamForm({ name: team.name, description: team.description || '', color: team.color })
+    setEditTeamForm({
+      name: team.name, description: team.description || '', color: team.color,
+      keywords: team.keywords || '', isGeneral: !!team.isGeneral,
+    })
   }
 
   async function handleUpdateTeam() {
@@ -486,11 +491,19 @@ export default function Roulette() {
                   <div className="flex items-center gap-3">
                     <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: team.color }} />
                     <div>
-                      <p className="font-medium text-text-primary text-sm">{team.name}</p>
+                      <p className="font-medium text-text-primary text-sm flex items-center gap-1.5">
+                        {team.name}
+                        {team.isGeneral && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-500 font-semibold">⭐ Geral</span>
+                        )}
+                      </p>
                       <p className="text-xs text-text-muted">
                         {team._count.agents} agente{team._count.agents !== 1 ? 's' : ''} · {team._count.campaigns} campanha{team._count.campaigns !== 1 ? 's' : ''}
                         {team.description && ` · ${team.description}`}
                       </p>
+                      {team.keywords && (
+                        <p className="text-[11px] text-text-muted mt-0.5">🏷️ {team.keywords}</p>
+                      )}
                     </div>
                   </div>
                   <div className="flex gap-1">
@@ -679,6 +692,20 @@ export default function Roulette() {
                   value={newTeam.description} onChange={e => setNewTeam(p => ({ ...p, description: e.target.value }))} />
               </div>
               <div>
+                <label className="text-sm text-text-muted">Apelidos da cidade (roteamento)</label>
+                <input className="input w-full mt-1" placeholder="Ex: rio preto, s. j. rio preto, sjrp"
+                  value={newTeam.keywords} onChange={e => setNewTeam(p => ({ ...p, keywords: e.target.value }))} />
+                <p className="text-[11px] text-text-muted mt-1">
+                  Separe por vírgula. O robô casa a resposta do cliente com o nome do time ou estes apelidos (ignora acentos).
+                </p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={newTeam.isGeneral}
+                  onChange={e => setNewTeam(p => ({ ...p, isGeneral: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-amber-500" />
+                <span className="text-sm text-text-primary">⭐ Grupo geral (recebe cidades sem time)</span>
+              </label>
+              <div>
                 <label className="text-sm text-text-muted">Cor</label>
                 <div className="flex items-center gap-3 mt-1">
                   <input type="color" value={newTeam.color}
@@ -720,6 +747,20 @@ export default function Roulette() {
                 <input className="input w-full mt-1" placeholder="Opcional..." value={editTeamForm.description}
                   onChange={e => setEditTeamForm(p => ({ ...p, description: e.target.value }))} />
               </div>
+              <div>
+                <label className="text-sm text-text-muted">Apelidos da cidade (roteamento)</label>
+                <input className="input w-full mt-1" placeholder="Ex: rio preto, s. j. rio preto, sjrp"
+                  value={editTeamForm.keywords} onChange={e => setEditTeamForm(p => ({ ...p, keywords: e.target.value }))} />
+                <p className="text-[11px] text-text-muted mt-1">
+                  Separe por vírgula. O robô casa a resposta do cliente com o nome do time ou estes apelidos (ignora acentos).
+                </p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={editTeamForm.isGeneral}
+                  onChange={e => setEditTeamForm(p => ({ ...p, isGeneral: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-amber-500" />
+                <span className="text-sm text-text-primary">⭐ Grupo geral (recebe cidades sem time)</span>
+              </label>
               <div>
                 <label className="text-sm text-text-muted">Cor</label>
                 <div className="flex items-center gap-3 mt-1">
