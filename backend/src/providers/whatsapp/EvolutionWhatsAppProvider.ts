@@ -319,7 +319,9 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         : rawData ? [rawData] : []
 
       for (const msg of msgs) {
-        if (msg.key?.fromMe) continue
+        // fromMe = mensagem enviada pelo próprio número por fora do CRM (celular/
+        // WhatsApp Web). Espelhamos como mensagem de SAÍDA em vez de ignorar.
+        const fromMe: boolean = !!msg.key?.fromMe
         const remoteJid: string = msg.key?.remoteJid || ''
         if (!remoteJid) continue
         if (remoteJid.endsWith('@g.us')) continue  // ignora grupos por ora
@@ -355,17 +357,19 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         const incoming: IncomingMessage = {
           externalId: msg.key?.id || `evo_${Date.now()}`,
           from,
-          senderName: msg.pushName || undefined,
+          // pushName em msg fromMe é o NOSSO nome, não o do contato → ignora
+          senderName: fromMe ? undefined : (msg.pushName || undefined),
           body: loc ? (loc.name || loc.address || '') : this.extractText(inner),
           type,
           mediaUrl,
           latitude: typeof latitude === 'number' ? latitude : undefined,
           longitude: typeof longitude === 'number' ? longitude : undefined,
           timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
+          fromMe,
         }
 
         if (!incoming.from) continue
-        logger.info(`[Evolution] Mensagem de ${incoming.from} | instância ${data.instance}`)
+        logger.info(`[Evolution] Mensagem ${fromMe ? 'enviada (espelhada)' : 'recebida'} de/para ${incoming.from} | instância ${data.instance}`)
         this.messageCallbacks.forEach(cb => cb(data.instance, incoming))
       }
     }

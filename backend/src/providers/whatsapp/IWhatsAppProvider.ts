@@ -8,6 +8,9 @@ export interface IncomingMessage {
   latitude?: number
   longitude?: number
   timestamp: Date
+  // true = mensagem enviada pelo próprio número por fora do CRM (celular/WhatsApp
+  // Web espelhado). `from` passa a ser o destinatário (contato da conversa).
+  fromMe?: boolean
 }
 
 export interface ConnectionStatus {

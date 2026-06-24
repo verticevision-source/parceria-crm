@@ -83,6 +83,14 @@ function setupMessageListener(): void {
       if (!session) return
 
       const phone = normalizePhone(message.from)
+
+      // ── Mensagem enviada por fora do CRM (celular/WhatsApp Web espelhado) ──
+      // Espelha como mensagem de SAÍDA; não dispara bot/IA/auto-tag.
+      if (message.fromMe) {
+        await handleOutgoingMirror(session, session.userId, phone, message)
+        return
+      }
+
       // Dono = o atendente que conectou este número (a sessão). Ele recebe e vê
       // tudo que chega no número. Se o contato já existia com outro dono (sobra
       // de uso anterior), reatribuímos ao dono do número.
@@ -226,6 +234,96 @@ function setupMessageListener(): void {
       logger.error('[WhatsAppService] Erro ao processar mensagem recebida:', err)
     }
   })
+}
+
+/**
+ * Espelha no CRM uma mensagem enviada pelo próprio número por fora do CRM
+ * (o atendente respondeu pelo celular / WhatsApp Web). Registra como direção
+ * OUT, sem disparar bot/IA/auto-tag/remarketing.
+ */
+async function handleOutgoingMirror(
+  session: { id: string; userId: string },
+  ownerUserId: string,
+  phone: string,
+  message: IncomingMessage,
+): Promise<void> {
+  // Evita duplicar: o eco das mensagens que o próprio CRM enviou já está salvo
+  if (message.externalId) {
+    const exists = await prisma.message.findFirst({
+      where: { externalMessageId: message.externalId },
+      select: { id: true },
+    })
+    if (exists) return
+  }
+
+  let contact = await findContactGlobal(phone)
+  if (!contact) {
+    contact = await prisma.contact.create({
+      data: { userId: ownerUserId, name: phone, phone },
+    })
+    logger.info(`[WhatsAppService] Novo contato criado (msg de saída): ${phone}`)
+  } else if (contact.userId !== ownerUserId) {
+    contact = await prisma.contact.update({
+      where: { id: contact.id },
+      data: { userId: ownerUserId },
+    })
+  }
+
+  let conversation = await prisma.conversation.findFirst({
+    where: { contactId: contact.id },
+    orderBy: { createdAt: 'asc' },
+  })
+
+  if (!conversation) {
+    conversation = await prisma.conversation.create({
+      data: {
+        userId: ownerUserId,
+        whatsappSessionId: session.id,
+        contactId: contact.id,
+        status: 'OPEN',
+        lastMessage: message.body,
+        lastMessageAt: message.timestamp,
+        unreadCount: 0,
+      },
+    })
+  } else {
+    conversation = await prisma.conversation.update({
+      where: { id: conversation.id },
+      data: {
+        userId: ownerUserId,
+        lastMessage: message.body,
+        lastMessageAt: message.timestamp,
+        unreadCount: 0, // o atendente respondeu → zera não-lidas
+        status: 'OPEN',
+      },
+    })
+  }
+
+  const savedMessage = await prisma.message.create({
+    data: {
+      conversationId: conversation.id,
+      userId: conversation.userId,
+      whatsappSessionId: session.id,
+      contactId: contact.id,
+      direction: 'OUT',
+      type: message.type,
+      textBody: message.body,
+      mediaUrl: message.mediaUrl,
+      latitude: message.latitude ?? null,
+      longitude: message.longitude ?? null,
+      externalMessageId: message.externalId,
+      sentAt: message.timestamp,
+    },
+  })
+
+  if (io) {
+    io.to(`user:${conversation.userId}`).emit('new-message', {
+      message: savedMessage,
+      conversation,
+      contact,
+    })
+  }
+  logger.info(`[WhatsAppService] Mensagem enviada por fora do CRM espelhada (para ${phone})`)
 }
 
 /**
