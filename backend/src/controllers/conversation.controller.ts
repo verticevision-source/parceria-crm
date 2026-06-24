@@ -96,27 +96,7 @@ export class ConversationController {
     res.status(201).json({ success: true, data: conversationTag })
   }
 
-  /** Admin: exclui uma conversa (e suas mensagens) */
-  static async remove(req: AuthRequest, res: Response): Promise<void> {
-    const { id } = req.params
-    const conv = await prisma.conversation.findUnique({ where: { id } })
-    if (!conv) {
-      res.status(404).json({ success: false, message: 'Conversa não encontrada' })
-      return
-    }
-    await prisma.message.deleteMany({ where: { conversationId: id } })
-    await prisma.conversationTag.deleteMany({ where: { conversationId: id } })
-    await prisma.conversation.delete({ where: { id } })
-    res.json({ success: true, message: 'Conversa excluída' })
-  }
-
-  /** Admin: limpa TODAS as conversas e mensagens (faxina) */
-  static async clearAll(_req: AuthRequest, res: Response): Promise<void> {
-    await prisma.message.deleteMany({})
-    await prisma.conversationTag.deleteMany({})
-    const r = await prisma.conversation.deleteMany({})
-    res.json({ success: true, data: { deleted: r.count }, message: `${r.count} conversa(s) excluída(s)` })
-  }
+  // Exclusão de conversas removida por política (nenhuma conversa some do banco).
 
   static async removeTag(req: AuthRequest, res: Response): Promise<void> {
     const { id, tagId } = req.params

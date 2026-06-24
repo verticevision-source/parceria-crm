@@ -621,31 +621,7 @@ export default function Attendance() {
     inputRef.current?.focus()
   }
 
-  // Admin: excluir uma conversa
-  const deleteConversation = async (conv: Conversation) => {
-    if (!confirm(`Excluir a conversa de ${conv.contact?.name || conv.contact?.phone || ''} e todas as mensagens? Esta ação não pode ser desfeita.`)) return
-    try {
-      await conversationsApi.remove(conv.id)
-      toast.success('Conversa excluída')
-      setConversations((prev) => prev.filter((c) => c.id !== conv.id))
-      setSelected((prev) => (prev?.id === conv.id ? null : prev))
-    } catch {
-      toast.error('Erro ao excluir conversa')
-    }
-  }
-
-  // Admin: limpar TODAS as conversas
-  const clearAllConversations = async () => {
-    if (!confirm('Excluir TODAS as conversas e mensagens do sistema? Esta ação não pode ser desfeita.')) return
-    try {
-      const res = await conversationsApi.clearAll()
-      toast.success(res.data.message || 'Conversas limpas')
-      setConversations([])
-      setSelected(null)
-    } catch {
-      toast.error('Erro ao limpar conversas')
-    }
-  }
+  // Exclusão de conversas desabilitada por política (nenhuma conversa some do banco).
 
   // ── Ligações ──────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -764,15 +740,6 @@ export default function Attendance() {
           <div className="flex items-center justify-between mb-3">
             <h2 className="text-text-primary font-semibold">Atendimento</h2>
             <div className="flex items-center gap-1.5">
-              {isAdmin && (
-                <button
-                  onClick={clearAllConversations}
-                  title="Limpar todas as conversas (admin)"
-                  className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium bg-bg-tertiary hover:bg-danger/10 text-text-muted hover:text-danger border border-border transition-colors"
-                >
-                  <Trash2 size={12} /> Limpar
-                </button>
-              )}
               <button
                 onClick={handleRouletteToggle}
                 disabled={rouletteToggling}
@@ -910,12 +877,6 @@ export default function Attendance() {
                     <X size={16} />
                   </button>
                 </div>
-                {isAdmin && (
-                  <button onClick={() => deleteConversation(selected)} title="Excluir conversa (admin)"
-                    className="p-1.5 rounded-lg hover:bg-danger/10 text-text-muted hover:text-danger transition-colors border-l border-border ml-1 pl-2">
-                    <Trash2 size={16} />
-                  </button>
-                )}
               </div>
             </div>
 

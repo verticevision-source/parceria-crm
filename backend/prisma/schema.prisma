@@ -97,7 +97,8 @@ model WhatsAppSession {
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
 
-  user          User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict: não deixa apagar usuário com sessões (preserva histórico)
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
   conversations Conversation[]
   messages      Message[]
 
@@ -116,7 +117,8 @@ model Contact {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict: não deixa apagar usuário dono de contatos (preserva histórico)
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Restrict)
   conversations    Conversation[]
   messages         Message[]
   leads            Lead[]
@@ -141,7 +143,8 @@ model Conversation {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Restrict: conversa NUNCA é apagada por cascata ao remover um usuário
+  user            User              @relation(fields: [userId], references: [id], onDelete: Restrict)
   whatsappSession WhatsAppSession   @relation(fields: [whatsappSessionId], references: [id])
   contact         Contact?          @relation(fields: [contactId], references: [id])
   lead            Lead?             @relation(fields: [leadId], references: [id])

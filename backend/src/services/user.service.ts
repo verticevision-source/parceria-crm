@@ -132,26 +132,30 @@ export class UserService {
     })
   }
 
+  /**
+   * "Exclui" um usuário via SOFT-DELETE (desativa). NUNCA apaga o registro,
+   * pois isso cascatearia e apagaria conversas, mensagens, contatos e sessões
+   * do banco — política: nenhuma conversa pode sumir. O usuário desativado não
+   * loga (auth.service checa isActive) e sai da roleta para não receber leads.
+   */
   static async delete(id: string, requesterId: string) {
     if (id === requesterId) {
-      throw new Error('Você não pode excluir a si mesmo')
+      throw new Error('Você não pode desativar a si mesmo')
     }
 
     const user = await prisma.user.findUnique({ where: { id } })
     if (!user) throw new Error('Usuário não encontrado')
 
-    // Não permite excluir o último admin
+    // Não permite desativar o último admin ativo
     if (user.role === 'ADMIN') {
-      const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } })
-      if (adminCount <= 1) throw new Error('Não é possível excluir o último administrador')
+      const activeAdmins = await prisma.user.count({ where: { role: 'ADMIN', isActive: true } })
+      if (activeAdmins <= 1) throw new Error('Não é possível desativar o último administrador')
     }
 
-    // Limpa dependências que bloqueiam a exclusão
-    await prisma.rouletteAgentTeam.deleteMany({ where: { agent: { userId: id } } }).catch(() => {})
-    await prisma.rouletteAgent.deleteMany({ where: { userId: id } }).catch(() => {})
-    await prisma.cRMBoardMember.deleteMany({ where: { userId: id } }).catch(() => {})
+    // Tira da roleta para parar de receber leads (preserva o histórico).
+    await prisma.rouletteAgent.updateMany({ where: { userId: id }, data: { isActive: false } }).catch(() => {})
 
-    await prisma.user.delete({ where: { id } })
-    return { id }
+    await prisma.user.update({ where: { id }, data: { isActive: false } })
+    return { id, deactivated: true }
   }
 }

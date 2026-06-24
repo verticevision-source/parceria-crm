@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Trash2, Sparkles, RefreshCw } from 'lucide-react'
+import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Sparkles, RefreshCw } from 'lucide-react'
 import { usersApi } from '../services/api'
-import { useAuth } from '../contexts/AuthContext'
 import { User as UserType } from '../types'
 import Avatar from '../components/UI/Avatar'
 import { fileToAvatarDataUrl } from '../utils/image'
@@ -13,7 +12,6 @@ import toast from 'react-hot-toast'
 const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER', avatarUrl: '', fichaLink: '' }
 
 export default function Users() {
-  const { user: currentUser } = useAuth()
   const [users, setUsers] = useState<UserType[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
@@ -115,17 +113,8 @@ export default function Users() {
     }
   }
 
-  const remove = async (user: UserType) => {
-    if (!confirm(`Excluir o usuário "${user.name}" permanentemente? Esta ação não pode ser desfeita.`)) return
-    try {
-      await usersApi.remove(user.id)
-      toast.success('Usuário excluído')
-      load()
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao excluir'
-      toast.error(msg)
-    }
-  }
+  // Exclusão permanente de usuário removida: deletar apagaria conversas/mensagens
+  // por cascata. Use o botão Ativar/Desativar (soft-delete) — o histórico é preservado.
 
   if (loading) return <PageLoader />
 
@@ -261,15 +250,6 @@ export default function Users() {
                           title={u.aiEnabled ? 'IA liberada (clique para remover)' : 'Liberar assistente de IA'}
                         >
                           <Sparkles size={14} />
-                        </button>
-                      )}
-                      {currentUser?.id !== u.id && (
-                        <button
-                          onClick={() => remove(u)}
-                          className="p-1.5 rounded-lg text-text-muted hover:text-danger hover:bg-danger/10 transition-colors"
-                          title="Excluir permanentemente"
-                        >
-                          <Trash2 size={14} />
                         </button>
                       )}
                     </div>
