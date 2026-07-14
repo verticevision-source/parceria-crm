@@ -607,6 +607,7 @@ export class WhatsAppService {
     // conectado (modelo de número compartilhado da Cloud API oficial)
     let session = await prisma.whatsAppSession.findFirst({
       where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },  // prefere a sessão reconectada mais recente
     })
     if (!session) {
       session = await prisma.whatsAppSession.findFirst({
@@ -719,6 +720,7 @@ export class WhatsAppService {
   ) {
     const session = await prisma.whatsAppSession.findFirst({
       where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },  // prefere a sessão reconectada mais recente
     })
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
@@ -745,9 +747,11 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
-    const result = await (provider as any).sendFile
-      ? (provider as any).sendFile(session.id, to, file)
-      : provider.sendMessage(session.id, to, `[Arquivo: ${file.filename}]`)
+    // IMPORTANTE: o await tem que envolver a CHAMADA, não a referência da função.
+    // `await x.sendFile ? a : b` avalia (await x.sendFile) primeiro → bug (result vira Promise).
+    const result = (provider as any).sendFile
+      ? await (provider as any).sendFile(session.id, to, file)
+      : await provider.sendMessage(session.id, to, `[Arquivo: ${file.filename}]`)
 
     const msgType = file.mimetype.startsWith('image/')
       ? 'IMAGE'
@@ -789,6 +793,7 @@ export class WhatsAppService {
   static async sendAudio(userId: string, to: string, audioData: string, mimetype?: string) {
     const session = await prisma.whatsAppSession.findFirst({
       where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },  // prefere a sessão reconectada mais recente
     })
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
@@ -815,9 +820,9 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
-    const result = await (provider as any).sendAudio
-      ? (provider as any).sendAudio(session.id, to, audioData, mimetype)
-      : provider.sendMessage(session.id, to, '[Áudio]')
+    const result = (provider as any).sendAudio
+      ? await (provider as any).sendAudio(session.id, to, audioData, mimetype)
+      : await provider.sendMessage(session.id, to, '[Áudio]')
 
     const message = await prisma.message.create({
       data: {
