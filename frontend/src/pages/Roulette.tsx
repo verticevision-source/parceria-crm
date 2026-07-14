@@ -15,6 +15,7 @@ interface Team {
   isActive: boolean
   keywords?: string | null
   isGeneral?: boolean
+  offersWeekly?: boolean
   _count: { agents: number; campaigns: number }
 }
 
@@ -74,11 +75,11 @@ export default function Roulette() {
 
   // Modal novo time
   const [showNewTeam, setShowNewTeam] = useState(false)
-  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
+  const [newTeam, setNewTeam] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false, offersWeekly: true })
 
   // Edição
   const [editTeam, setEditTeam] = useState<Team | null>(null)
-  const [editTeamForm, setEditTeamForm] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
+  const [editTeamForm, setEditTeamForm] = useState({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false, offersWeekly: true })
   const [editCampaign, setEditCampaign] = useState<Campaign | null>(null)
   const [editCampForm, setEditCampForm] = useState({ name: '', source: '', teamId: '', description: '' })
 
@@ -162,7 +163,7 @@ export default function Roulette() {
       await api.post('/roulette/teams', newTeam)
       toast.success('Time criado!')
       setShowNewTeam(false)
-      setNewTeam({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false })
+      setNewTeam({ name: '', description: '', color: '#6366f1', keywords: '', isGeneral: false, offersWeekly: true })
       loadData()
     } catch {
       toast.error('Erro ao criar time')
@@ -185,6 +186,7 @@ export default function Roulette() {
     setEditTeamForm({
       name: team.name, description: team.description || '', color: team.color,
       keywords: team.keywords || '', isGeneral: !!team.isGeneral,
+      offersWeekly: team.offersWeekly !== false,
     })
   }
 
@@ -705,6 +707,12 @@ export default function Roulette() {
                   className="w-4 h-4 rounded accent-amber-500" />
                 <span className="text-sm text-text-primary">⭐ Grupo geral (recebe cidades sem time)</span>
               </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={newTeam.offersWeekly}
+                  onChange={e => setNewTeam(p => ({ ...p, offersWeekly: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-primary" />
+                <span className="text-sm text-text-primary">📅 Oferece plano <b>semanal</b> <span className="text-text-muted">(desmarque p/ só diário, ex: Brasília)</span></span>
+              </label>
               <div>
                 <label className="text-sm text-text-muted">Cor</label>
                 <div className="flex items-center gap-3 mt-1">
@@ -760,6 +768,12 @@ export default function Roulette() {
                   onChange={e => setEditTeamForm(p => ({ ...p, isGeneral: e.target.checked }))}
                   className="w-4 h-4 rounded accent-amber-500" />
                 <span className="text-sm text-text-primary">⭐ Grupo geral (recebe cidades sem time)</span>
+              </label>
+              <label className="flex items-center gap-2 cursor-pointer select-none">
+                <input type="checkbox" checked={editTeamForm.offersWeekly}
+                  onChange={e => setEditTeamForm(p => ({ ...p, offersWeekly: e.target.checked }))}
+                  className="w-4 h-4 rounded accent-primary" />
+                <span className="text-sm text-text-primary">📅 Oferece plano <b>semanal</b> <span className="text-text-muted">(desmarque p/ só diário, ex: Brasília)</span></span>
               </label>
               <div>
                 <label className="text-sm text-text-muted">Cor</label>
