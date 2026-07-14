@@ -156,6 +156,7 @@ function setupMessageListener(): void {
           where: { id: conversation.id },
           data: {
             userId: ownerUserId,   // garante que a conversa fica com o dono do número
+            whatsappSessionId: session.id,  // mantém a conversa na sessão ativa (evita apontar p/ sessão velha)
             lastMessage: message.body,
             lastMessageAt: message.timestamp,
             unreadCount: { increment: 1 },

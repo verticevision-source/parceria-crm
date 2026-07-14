@@ -365,12 +365,9 @@ export default function Attendance() {
     setInput('')
     setSending(true)
     try {
-      const session = selected.whatsappSession
-      if (!session || session.status !== 'CONNECTED') {
-        toast.error('WhatsApp não está conectado')
-        setInput(body)
-        return
-      }
+      // Não checamos a sessão da CONVERSA (pode ser antiga/desconectada após
+      // reconexão). O backend escolhe a sessão conectada do dono e erra com
+      // mensagem clara se não houver nenhuma.
       await whatsappApi.sendMessage(selected.contact?.phone || '', body)
       setConversations((prev) =>
         prev.map((c) =>
@@ -379,8 +376,8 @@ export default function Attendance() {
             : c
         )
       )
-    } catch {
-      toast.error('Erro ao enviar mensagem')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao enviar mensagem')
       setInput(body)
     } finally {
       setSending(false)
