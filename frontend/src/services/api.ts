@@ -135,6 +135,7 @@ export const flowsApi = {
   create: (name: string) => api.post('/flows', { name }),
   update: (id: string, data: object) => api.put(`/flows/${id}`, data),
   remove: (id: string) => api.delete(`/flows/${id}`),
+  qualificationTemplate: () => api.post('/flows/qualification-template'),
 }
 
 // WhatsApp

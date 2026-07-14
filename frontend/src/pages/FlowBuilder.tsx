@@ -8,21 +8,23 @@ import { flowsApi } from '../services/api'
 import toast from 'react-hot-toast'
 import {
   Workflow, Plus, Save, Trash2, MessageCircle, HelpCircle, GitBranch,
-  UserCheck, Play, X, ArrowLeft, Power, MapPin
+  UserCheck, Play, X, ArrowLeft, Power, MapPin, Calendar, Route
 } from 'lucide-react'
 
 // ── Tipos de nó ──
 const NODE_TYPES_META: Record<string, { label: string; color: string; icon: any }> = {
-  start:       { label: 'Início',       color: '#10b981', icon: Play },
-  message:     { label: 'Mensagem',     color: '#6366f1', icon: MessageCircle },
-  question:    { label: 'Pergunta',     color: '#f59e0b', icon: HelpCircle },
-  condition:   { label: 'Condição',     color: '#8b5cf6', icon: GitBranch },
-  handoff:     { label: 'Encaminhar',   color: '#ec4899', icon: UserCheck },
-  cityHandoff: { label: 'Por Cidade',   color: '#14b8a6', icon: MapPin },
+  start:           { label: 'Início',        color: '#10b981', icon: Play },
+  message:         { label: 'Mensagem',      color: '#6366f1', icon: MessageCircle },
+  question:        { label: 'Pergunta',      color: '#f59e0b', icon: HelpCircle },
+  condition:       { label: 'Condição',      color: '#8b5cf6', icon: GitBranch },
+  handoff:         { label: 'Encaminhar',    color: '#ec4899', icon: UserCheck },
+  cityHandoff:     { label: 'Por Cidade',    color: '#14b8a6', icon: MapPin },
+  modalityQuestion:{ label: 'Dia/Semana',    color: '#0ea5e9', icon: Calendar },
+  cityRoute:       { label: 'Roteia p/ Cidade', color: '#f43f5e', icon: Route },
 }
 
 // Nós que encerram o robô (sem saída)
-const TERMINAL_NODES = ['handoff', 'cityHandoff']
+const TERMINAL_NODES = ['handoff', 'cityHandoff', 'cityRoute']
 
 // ── Nó custom ──
 function FlowNodeComp({ data, selected }: NodeProps) {
@@ -97,6 +99,16 @@ export default function FlowBuilder() {
     } catch { toast.error('Erro ao criar fluxo') }
   }
 
+  async function genQualificationFlow() {
+    if (!confirm('Gerar o fluxo pronto de qualificação (cidade → dia/semana → roteia)? Você poderá editar os textos e ativar depois.')) return
+    try {
+      const res = await flowsApi.qualificationTemplate()
+      toast.success('Fluxo de qualificação criado! Edite os textos e ative.')
+      await loadFlows()
+      openFlow(res.data.data.id)
+    } catch { toast.error('Erro ao gerar fluxo') }
+  }
+
   async function deleteFlow(id: string) {
     if (!confirm('Excluir este fluxo?')) return
     try {
@@ -125,6 +137,12 @@ export default function FlowBuilder() {
     if (!selectedNode) return
     setNodes((nds) => nds.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, text } } : n))
     setSelectedNode((prev) => prev ? { ...prev, data: { ...prev.data, text } } : null)
+  }
+
+  const updateNodeField = (field: string, value: string) => {
+    if (!selectedNode) return
+    setNodes((nds) => nds.map((n) => n.id === selectedNode.id ? { ...n, data: { ...n.data, [field]: value } } : n))
+    setSelectedNode((prev) => prev ? { ...prev, data: { ...prev.data, [field]: value } } : null)
   }
 
   const editEdgeLabel = (edge: Edge) => {
@@ -174,7 +192,12 @@ export default function FlowBuilder() {
             </h1>
             <p className="text-sm text-text-muted mt-0.5">Atendimento automático antes de cair na roleta</p>
           </div>
-          <button onClick={createFlow} className="btn-primary flex items-center gap-2"><Plus size={16} /> Novo Fluxo</button>
+          <div className="flex gap-2">
+            <button onClick={genQualificationFlow} className="btn-ghost border border-border flex items-center gap-2" title="Cria o fluxo pronto: pergunta cidade → dia/semana → roteia">
+              <MapPin size={16} /> Fluxo de qualificação
+            </button>
+            <button onClick={createFlow} className="btn-primary flex items-center gap-2"><Plus size={16} /> Novo Fluxo</button>
+          </div>
         </div>
 
         {loading ? (
@@ -309,6 +332,52 @@ export default function FlowBuilder() {
                 Conecte várias saídas e <b>clique em cada seta</b> para definir a palavra-chave
                 (ex: "sim", "1"). Use "default" para o caminho padrão quando nada casar.
               </p>
+            )}
+
+            {/* Pergunta Dia/Semana (adapta ao grupo da cidade) */}
+            {selectedNode.data.type === 'modalityQuestion' && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-text-muted">
+                  Pergunta a modalidade. Se a cidade cai só em grupos <b>diário</b> (ex: Brasília),
+                  a opção "por semana" some automaticamente. Coloque <b>depois</b> da pergunta de cidade.
+                </p>
+                {[
+                  { f: 'text', l: 'Cabeçalho da pergunta' },
+                  { f: 'optDaily', l: 'Opção 1 (diário)' },
+                  { f: 'optWeekly', l: 'Opção 2 (semanal)' },
+                  { f: 'optNone', l: 'Opção "não tenho interesse"' },
+                  { f: 'warnText', l: 'Aviso (não fazemos mensal)' },
+                ].map(({ f, l }) => (
+                  <div key={f}>
+                    <label className="text-[11px] text-text-muted">{l}</label>
+                    <textarea value={selectedNode.data[f] || ''} onChange={(e) => updateNodeField(f, e.target.value)}
+                      rows={f === 'text' || f === 'warnText' ? 2 : 1}
+                      className="input-field resize-none mt-0.5 text-xs w-full" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Roteamento por cidade + mensagens finais */}
+            {selectedNode.data.type === 'cityRoute' && (
+              <div className="space-y-2">
+                <p className="text-[11px] text-text-muted">
+                  Encerra o robô e decide: cidade atendida + quer → vai pro vendedor (nota interna).
+                  Não atendida + quer → aviso "fora de área". Sem interesse → agradece. As duas últimas
+                  vão pro Kanban. Coloque <b>depois</b> do nó Dia/Semana.
+                </p>
+                {[
+                  { f: 'msgServed', l: 'Msg ao cliente (atendido → vendedor)' },
+                  { f: 'msgOutOfArea', l: 'Msg fora de área (quer, mas não atendemos)' },
+                  { f: 'msgNotInterested', l: 'Msg sem interesse' },
+                ].map(({ f, l }) => (
+                  <div key={f}>
+                    <label className="text-[11px] text-text-muted">{l}</label>
+                    <textarea value={selectedNode.data[f] || ''} onChange={(e) => updateNodeField(f, e.target.value)}
+                      rows={3} className="input-field resize-none mt-0.5 text-xs w-full" />
+                  </div>
+                ))}
+              </div>
             )}
 
             {selectedNode.data.type !== 'start' && (

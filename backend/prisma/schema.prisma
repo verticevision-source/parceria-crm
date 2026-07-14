@@ -570,6 +570,7 @@ model ChatFlowSession {
   currentNodeId  String?
   status         String    @default("running")  // running | waiting | done
   lastReply      String?
+  vars           Json?     // respostas capturadas (ex: {"city":"Rio Preto","modality":"1","weeklyOffered":true})
   waitingSince   DateTime?
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
