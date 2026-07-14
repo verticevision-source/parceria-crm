@@ -184,7 +184,7 @@ function setupMessageListener(): void {
 
       const ownerId = conversation.userId
       if (io) {
-        io.to(`user:${ownerId}`).emit('new-message', {
+        io.to(`user:${ownerId}`).to('admins').emit('new-message', {
           message: savedMessage,
           conversation,
           contact,
@@ -196,7 +196,7 @@ function setupMessageListener(): void {
         const { applyAutoTags } = await import('./autoTag.service')
         const applied = await applyAutoTags(conversation.id, message.body)
         if (applied.length > 0 && io) {
-          io.to(`user:${ownerId}`).emit('conversation:tags', { conversationId: conversation.id, tags: applied })
+          io.to(`user:${ownerId}`).to('admins').emit('conversation:tags', { conversationId: conversation.id, tags: applied })
         }
       } catch (e) {
         console.error('[auto-tag] erro:', e)
@@ -318,7 +318,7 @@ async function handleOutgoingMirror(
   })
 
   if (io) {
-    io.to(`user:${conversation.userId}`).emit('new-message', {
+    io.to(`user:${conversation.userId}`).to('admins').emit('new-message', {
       message: savedMessage,
       conversation,
       contact,
@@ -427,7 +427,7 @@ function setupStatusListener(): void {
       })
 
       if (io) {
-        io.to(`user:${session.userId}`).emit('whatsapp-status', {
+        io.to(`user:${session.userId}`).to('admins').emit('whatsapp-status', {
           sessionId: session.id,
           status: status.status,
           phoneNumber: status.phoneNumber,
@@ -544,7 +544,7 @@ export class WhatsAppService {
         },
       })
       if (io) {
-        io.to(`user:${session.userId}`).emit('whatsapp-status', {
+        io.to(`user:${session.userId}`).to('admins').emit('whatsapp-status', {
           sessionId: session.id,
           status: 'CONNECTED',
           phoneNumber: liveStatus.phoneNumber,
@@ -588,7 +588,7 @@ export class WhatsAppService {
             data: { status: 'CONNECTED', phoneNumber: live.phoneNumber || null, connectedAt: new Date(), qrCode: null },
             include: { user: { select: { id: true, name: true, email: true } } },
           })
-          if (io) io.to(`user:${s.userId}`).emit('whatsapp-status', { sessionId: s.id, status: 'CONNECTED', phoneNumber: live.phoneNumber })
+          if (io) io.to(`user:${s.userId}`).to('admins').emit('whatsapp-status', { sessionId: s.id, status: 'CONNECTED', phoneNumber: live.phoneNumber })
           return updated
         }
         // Busca QR fresco
@@ -666,7 +666,7 @@ export class WhatsAppService {
     })
 
     if (io) {
-      io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+      io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
     }
 
     return message
@@ -784,7 +784,7 @@ export class WhatsAppService {
     })
 
     if (io) {
-      io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+      io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
     }
 
     return message
@@ -847,7 +847,7 @@ export class WhatsAppService {
     })
 
     if (io) {
-      io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+      io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
     }
 
     return message
@@ -899,7 +899,7 @@ export class WhatsAppService {
       data: { lastMessage: previewText, lastMessageAt: new Date() },
     })
 
-    if (io) io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+    if (io) io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
     return message
   }
 
@@ -953,7 +953,7 @@ export class WhatsAppService {
       data: { lastMessage: '[Localização]', lastMessageAt: new Date() },
     })
 
-    if (io) io.to(`user:${userId}`).emit('new-message', { message, conversation, contact })
+    if (io) io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
     return message
   }
 }

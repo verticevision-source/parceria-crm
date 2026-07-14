@@ -37,9 +37,12 @@ io.use((socket, next) => {
 
 io.on('connection', (socket) => {
   const userId = (socket.data as any).userId as string
+  const role = (socket.data as any).role as string
   // Entra automaticamente APENAS na própria sala — impede ouvir conversas de outros
   socket.join(`user:${userId}`)
-  logger.info(`[Socket.IO] Conectado e autenticado: user:${userId}`)
+  // Admin vê tudo: entra na sala 'admins' p/ receber mensagens de qualquer conversa
+  if (role === 'ADMIN') socket.join('admins')
+  logger.info(`[Socket.IO] Conectado e autenticado: user:${userId}${role === 'ADMIN' ? ' (admin)' : ''}`)
 
   // 'join' mantido por compatibilidade, mas só entra na própria sala (ignora o arg do cliente)
   socket.on('join', () => { socket.join(`user:${userId}`) })

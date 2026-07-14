@@ -9,8 +9,9 @@ export function getSocket(): Socket {
     socket = io(SOCKET_URL, {
       autoConnect: false,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity,  // nunca desiste (antes: 5 → parava de atualizar após ~10s offline)
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 8000,
       // Envia o JWT no handshake — o backend valida e só deixa ouvir a própria sala
       auth: (cb) => cb({ token: localStorage.getItem('token') || '' }),
     })
