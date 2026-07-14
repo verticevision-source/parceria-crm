@@ -21,8 +21,12 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }))
 
+// FRONTEND_URL aceita múltiplos domínios separados por vírgula (ex.: URL da DO
+// + domínio próprio parceriacrm.verticevision.com.br). Origem sem match é negada.
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',').map((s) => s.trim()).filter(Boolean)
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: allowedOrigins,
   credentials: true,
 }))
 
