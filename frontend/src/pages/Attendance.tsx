@@ -46,7 +46,11 @@ function mediaSrc(url: string | undefined | null): string {
   if (url.startsWith('data:') || url.startsWith('blob:')) return url
   // base64 cru (sem prefixo) também vira data URL
   if (/^[A-Za-z0-9+/]{100,}={0,2}$/.test(url.slice(0, 200))) return `data:application/octet-stream;base64,${url}`
-  return `/api/media/proxy?url=${encodeURIComponent(url)}`
+  // A API fica em outro domínio (deploy separado), então usa URL ABSOLUTA.
+  // Tags <img>/<audio>/<video> não mandam header Authorization → token vai na query.
+  const base = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+  const token = localStorage.getItem('token') || ''
+  return `${base}/api/media/proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`
 }
 
 function formatRecordingTime(seconds: number): string {

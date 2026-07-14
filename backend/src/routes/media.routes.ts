@@ -1,10 +1,28 @@
-import { Router, Request, Response } from 'express'
-import { authMiddleware } from '../middlewares/auth.middleware'
+import { Router, Request, Response, NextFunction } from 'express'
+import { verifyToken } from '../utils/jwt'
 import { getWhatsAppProvider } from '../providers/whatsapp/WhatsAppProviderFactory'
 import { WhatsAppCloudProvider } from '../providers/whatsapp/WhatsAppCloudProvider'
 import { logger } from '../utils/logger'
 
 const router = Router()
+
+// Auth do proxy de mídia: aceita o token no header Authorization OU na query
+// (?token=), porque <img>/<audio>/<video> não enviam headers.
+function mediaAuth(req: Request, res: Response, next: NextFunction): void {
+  const header = req.headers.authorization
+  const headerToken = header?.startsWith('Bearer ') ? header.slice(7) : null
+  const token = headerToken || (typeof req.query.token === 'string' ? req.query.token : null)
+  if (!token) {
+    res.status(401).json({ message: 'Token não fornecido' })
+    return
+  }
+  try {
+    verifyToken(token)
+    next()
+  } catch {
+    res.status(401).json({ message: 'Token inválido ou expirado' })
+  }
+}
 
 // Domínios permitidos no proxy (whitelist anti-SSRF)
 const ALLOWED_HOSTS = [
@@ -41,7 +59,7 @@ function isSafeUrl(url: string): boolean {
  *   - URLs normais (WAHA, etc.)
  *   - "meta:<mediaId>" para baixar mídia da Cloud API da Meta
  */
-router.get('/proxy', authMiddleware, async (req: Request, res: Response) => {
+router.get('/proxy', mediaAuth, async (req: Request, res: Response) => {
   const { url } = req.query as { url?: string }
 
   if (!url) {
