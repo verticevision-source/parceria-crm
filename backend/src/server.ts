@@ -9,13 +9,17 @@ import { verifyToken } from './utils/jwt'
 import { logger } from './utils/logger'
 
 const PORT = process.env.PORT || 3001
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+// FRONTEND_URL aceita múltiplos domínios separados por vírgula. É OBRIGATÓRIO
+// virar array aqui: passar a string "url1,url2" como origin faz o CORS do
+// Socket.IO nunca casar → handshake rejeitado → sem tempo real (só recarregando).
+const FRONTEND_URLS = (process.env.FRONTEND_URL || 'http://localhost:5173')
+  .split(',').map((s) => s.trim()).filter(Boolean)
 
 const httpServer = http.createServer(app)
 
 const io = new SocketServer(httpServer, {
   cors: {
-    origin: FRONTEND_URL,
+    origin: FRONTEND_URLS,
     methods: ['GET', 'POST'],
     credentials: true,
   },
