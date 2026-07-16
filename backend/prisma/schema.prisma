@@ -114,6 +114,9 @@ model Contact {
   userId         String
   name           String
   phone          String
+  // JID @lid do WhatsApp (endereçamento LID). Quando existe, o envio TEM que ir
+  // pra cá — mandar pro número puro fica PENDING (nunca entrega).
+  lid            String?
   city           String?
   documentNumber String?
   notes          String?  @db.Text

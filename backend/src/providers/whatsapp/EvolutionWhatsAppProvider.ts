@@ -41,8 +41,11 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     return res.json() as Promise<T>
   }
 
-  // Normaliza número: remove @c.us, @s.whatsapp.net, @lid etc
+  // Normaliza número: remove @c.us, @s.whatsapp.net etc.
+  // ATENÇÃO: preserva o JID @lid — o WhatsApp só entrega nesse endereço para
+  // contatos com endereçamento LID; strippar faz a msg ficar PENDING pra sempre.
   private normalizeNumber(to: string): string {
+    if (to.endsWith('@lid')) return to
     return to.replace(/@.*$/, '')
   }
 
@@ -323,13 +326,29 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         // WhatsApp Web). Espelhamos como mensagem de SAÍDA em vez de ignorar.
         const fromMe: boolean = !!msg.key?.fromMe
         const remoteJid: string = msg.key?.remoteJid || ''
+        const remoteJidAlt: string = msg.key?.remoteJidAlt || ''
         if (!remoteJid) continue
-        if (remoteJid.endsWith('@g.us')) continue  // ignora grupos por ora
+        if (remoteJid.endsWith('@g.us') || remoteJidAlt.endsWith('@g.us')) continue  // ignora grupos
 
-        // Normaliza número: remove sufixo de JID
-        const from = remoteJid
+        // ── Endereçamento LID ────────────────────────────────────────────────
+        // O WhatsApp passou a endereçar contatos por "<id>@lid". A key traz os
+        // dois: um lado é o @lid (endereço de ENTREGA) e o outro o número real.
+        // Não dá pra assumir qual campo é qual — checamos os dois.
+        let lid: string | undefined
+        let phoneJid = remoteJid
+        if (remoteJid.endsWith('@lid')) {
+          lid = remoteJid
+          phoneJid = remoteJidAlt || remoteJid
+        } else if (remoteJidAlt.endsWith('@lid')) {
+          lid = remoteJidAlt
+          phoneJid = remoteJid
+        }
+
+        // Número real (para exibir/casar contato)
+        const from = phoneJid
           .replace(/@s\.whatsapp\.net$/, '')
           .replace(/@c\.us$/, '')
+          .replace(/@lid$/, '')
 
         // Desembrulha mensagem efêmera (some depois) se houver
         const inner = msg.message?.ephemeralMessage?.message || msg.message
@@ -366,10 +385,11 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
           longitude: typeof longitude === 'number' ? longitude : undefined,
           timestamp: new Date((msg.messageTimestamp || Date.now() / 1000) * 1000),
           fromMe,
+          lid,
         }
 
         if (!incoming.from) continue
-        logger.info(`[Evolution] Mensagem ${fromMe ? 'enviada (espelhada)' : 'recebida'} de/para ${incoming.from} | instância ${data.instance}`)
+        logger.info(`[Evolution] Mensagem ${fromMe ? 'enviada (espelhada)' : 'recebida'} de/para ${incoming.from}${lid ? ` (lid ${lid})` : ''} | instância ${data.instance}`)
         this.messageCallbacks.forEach(cb => cb(data.instance, incoming))
       }
     }

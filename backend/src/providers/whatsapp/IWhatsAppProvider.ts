@@ -11,6 +11,9 @@ export interface IncomingMessage {
   // true = mensagem enviada pelo próprio número por fora do CRM (celular/WhatsApp
   // Web espelhado). `from` passa a ser o destinatário (contato da conversa).
   fromMe?: boolean
+  // JID @lid quando o WhatsApp usa endereçamento LID nesse contato. O envio TEM
+  // que usar este endereço — mandar pro número puro fica PENDING (não entrega).
+  lid?: string
 }
 
 export interface ConnectionStatus {

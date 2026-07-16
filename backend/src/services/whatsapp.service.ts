@@ -105,6 +105,7 @@ function setupMessageListener(): void {
             userId: ownerUserId,
             name: message.senderName?.trim() || phone,
             phone,
+            lid: message.lid || null,
           },
         })
         logger.info(`[WhatsAppService] Novo contato criado: ${contact.name} (${phone})`)
@@ -114,10 +115,12 @@ function setupMessageListener(): void {
         // roubava o lead de volta pro adm, atropelando o vendedor que o pegou.
         const newName = (message.senderName?.trim() && (contact.name === contact.phone || !contact.name))
           ? message.senderName.trim() : undefined
-        if (newName) {
+        // Guarda/atualiza o LID — é por ele que o envio consegue entregar
+        const newLid = message.lid && message.lid !== contact.lid ? message.lid : undefined
+        if (newName || newLid) {
           contact = await prisma.contact.update({
             where: { id: contact.id },
-            data: { name: newName },
+            data: { ...(newName ? { name: newName } : {}), ...(newLid ? { lid: newLid } : {}) },
           })
         }
       }
@@ -265,9 +268,12 @@ async function handleOutgoingMirror(
   let contact = await findContactGlobal(phone)
   if (!contact) {
     contact = await prisma.contact.create({
-      data: { userId: ownerUserId, name: phone, phone },
+      data: { userId: ownerUserId, name: phone, phone, lid: message.lid || null },
     })
     logger.info(`[WhatsAppService] Novo contato criado (msg de saída): ${phone}`)
+  } else if (message.lid && message.lid !== contact.lid) {
+    // Aprende o LID mesmo por msg de saída (é o endereço que entrega)
+    contact = await prisma.contact.update({ where: { id: contact.id }, data: { lid: message.lid } })
   }
   // Não reatribui contato existente: o responsável é definido pela ROLETA.
 
@@ -714,7 +720,9 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
-    const result = await provider.sendMessage(session.id, to, body)
+    // Endereçamento LID: se o contato tem @lid, o envio TEM que ir pra lá —
+    // mandar pro número puro fica PENDING e nunca entrega.
+    const result = await provider.sendMessage(session.id, contact.lid || to, body)
 
     const message = await prisma.message.create({
       data: {
@@ -820,9 +828,10 @@ export class WhatsAppService {
     const provider = getWhatsAppProvider()
     // IMPORTANTE: o await tem que envolver a CHAMADA, não a referência da função.
     // `await x.sendFile ? a : b` avalia (await x.sendFile) primeiro → bug (result vira Promise).
+    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
     const result = (provider as any).sendFile
-      ? await (provider as any).sendFile(session.id, to, file)
-      : await provider.sendMessage(session.id, to, `[Arquivo: ${file.filename}]`)
+      ? await (provider as any).sendFile(session.id, target, file)
+      : await provider.sendMessage(session.id, target, `[Arquivo: ${file.filename}]`)
 
     const msgType = file.mimetype.startsWith('image/')
       ? 'IMAGE'
@@ -891,9 +900,10 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
+    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
     const result = (provider as any).sendAudio
-      ? await (provider as any).sendAudio(session.id, to, audioData, mimetype)
-      : await provider.sendMessage(session.id, to, '[Áudio]')
+      ? await (provider as any).sendAudio(session.id, target, audioData, mimetype)
+      : await provider.sendMessage(session.id, target, '[Áudio]')
 
     const message = await prisma.message.create({
       data: {
@@ -1002,9 +1012,10 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
+    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
     const result = (provider as any).sendLocation
-      ? await (provider as any).sendLocation(session.id, to, latitude, longitude, name)
-      : await provider.sendMessage(session.id, to, `Localização: https://maps.google.com/?q=${latitude},${longitude}`)
+      ? await (provider as any).sendLocation(session.id, target, latitude, longitude, name)
+      : await provider.sendMessage(session.id, target, `Localização: https://maps.google.com/?q=${latitude},${longitude}`)
 
     const message = await prisma.message.create({
       data: {
