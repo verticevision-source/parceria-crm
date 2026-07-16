@@ -92,6 +92,22 @@ export class WhatsAppController {
   }
 
   // Send media file (multipart or base64 JSON)
+  /** POST /api/whatsapp/admin/connect-link — gera link público de QR p/ um atendente */
+  static async createConnectLink(req: AuthRequest, res: Response): Promise<void> {
+    const { userId } = req.body
+    if (!userId) {
+      res.status(400).json({ success: false, message: 'userId é obrigatório' })
+      return
+    }
+    const { token, userName, expiresAt } = await WhatsAppService.createConnectLink(userId)
+    // FRONTEND_URL pode ser lista separada por vírgula — usa o primeiro domínio
+    const base = (process.env.FRONTEND_URL || '').split(',')[0].trim().replace(/\/$/, '')
+    res.json({
+      success: true,
+      data: { token, userName, expiresAt, url: `${base}/conectar/${token}` },
+    })
+  }
+
   static async sendMedia(req: AuthRequest, res: Response): Promise<void> {
     const { to } = req.body
 

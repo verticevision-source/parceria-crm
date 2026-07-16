@@ -1,4 +1,5 @@
 import { Server as SocketServer } from 'socket.io'
+import { randomBytes } from 'crypto'
 import { prisma } from '../config/database'
 import { getWhatsAppProvider, getMockProvider } from '../providers/whatsapp/WhatsAppProviderFactory'
 import { IncomingMessage } from '../providers/whatsapp/IWhatsAppProvider'
@@ -494,6 +495,75 @@ export class WhatsAppService {
     })
 
     return { session, status: connectionStatus }
+  }
+
+  /**
+   * Admin gera um link público de conexão para um atendente.
+   * Cria (ou reaproveita) a sessão aguardando QR e devolve um token aleatório.
+   * O atendente abre /conectar/<token>, escaneia e pronto — sem login no CRM.
+   */
+  static async createConnectLink(targetUserId: string): Promise<{ token: string; userName: string; expiresAt: Date }> {
+    const user = await prisma.user.findUnique({ where: { id: targetUserId }, select: { id: true, name: true } })
+    if (!user) throw new Error('Atendente não encontrado')
+
+    // Reaproveita sessão aguardando QR; senão cria uma nova (connect gera a instância + QR)
+    let session = await prisma.whatsAppSession.findFirst({
+      where: { userId: targetUserId, status: 'WAITING_QR' },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!session) {
+      const created = await WhatsAppService.connect(targetUserId)
+      session = created.session as any
+    }
+    if (!session) throw new Error('Não foi possível preparar a sessão')
+
+    const token = randomBytes(24).toString('hex')
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000) // 24h
+    await prisma.whatsAppSession.update({
+      where: { id: session.id },
+      data: { connectToken: token, connectTokenExp: expiresAt },
+    })
+    logger.info(`[WhatsAppService] Link de conexão gerado para ${user.name}`)
+    return { token, userName: user.name, expiresAt }
+  }
+
+  /**
+   * PÚBLICO (sem login): estado + QR de um link de conexão.
+   * Só expõe o nome do atendente e o QR — nada sensível.
+   */
+  static async getConnectLinkState(token: string): Promise<{ userName: string; status: string; qrCode?: string } | null> {
+    const session = await prisma.whatsAppSession.findUnique({
+      where: { connectToken: token },
+      include: { user: { select: { name: true } } },
+    })
+    if (!session) return null
+    if (session.connectTokenExp && session.connectTokenExp.getTime() < Date.now()) return null
+
+    const provider = getWhatsAppProvider()
+    const live = await provider.getStatus(session.id).catch(() => null)
+
+    if (live?.status === 'CONNECTED') {
+      await prisma.whatsAppSession.update({
+        where: { id: session.id },
+        data: {
+          status: 'CONNECTED',
+          phoneNumber: live.phoneNumber || session.phoneNumber || null,
+          connectedAt: new Date(),
+          qrCode: null,
+          connectToken: null,      // consome o link após conectar
+          connectTokenExp: null,
+        },
+      })
+      if (io) {
+        io.to(`user:${session.userId}`).to('admins').emit('whatsapp-status', {
+          sessionId: session.id, status: 'CONNECTED', phoneNumber: live.phoneNumber,
+        })
+      }
+      return { userName: session.user?.name || 'Atendente', status: 'CONNECTED' }
+    }
+
+    const qrCode = await provider.getQRCode(session.id).catch(() => null)
+    return { userName: session.user?.name || 'Atendente', status: 'WAITING_QR', qrCode: qrCode || undefined }
   }
 
   static async disconnect(userId: string) {

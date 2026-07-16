@@ -27,6 +27,7 @@ router.post('/simulate', asyncHandler(WhatsAppController.simulateMessage))
 // Admin
 router.get('/admin/sessions', adminMiddleware, asyncHandler(WhatsAppController.getAllSessions))
 router.post('/admin/connect', adminMiddleware, asyncHandler(WhatsAppController.adminConnect))
+router.post('/admin/connect-link', adminMiddleware, asyncHandler(WhatsAppController.createConnectLink))
 router.post('/admin/disconnect/:sessionId', adminMiddleware, asyncHandler(WhatsAppController.adminDisconnect))
 
 export default router

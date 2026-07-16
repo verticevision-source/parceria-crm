@@ -6,6 +6,7 @@ import morgan from 'morgan'
 import 'dotenv/config'
 import routes from './routes'
 import webhookRoutes from './routes/webhook.routes'
+import publicConnectRoutes from './routes/publicConnect.routes'
 import { errorHandler } from './middlewares/errorHandler.middleware'
 import { logger } from './utils/logger'
 
@@ -53,6 +54,9 @@ app.get('/health', (_req, res) => {
 
 // Webhook público — sem JWT (Evolution API chama diretamente)
 app.use('/api/webhook', webhookRoutes)
+
+// Link público de conexão (QR) — sem JWT: o atendente abre o link e escaneia
+app.use('/api/public', publicConnectRoutes)
 
 app.use('/api', routes)
 

@@ -161,6 +161,7 @@ export const whatsappApi = {
   sendLocationQuery: (to: string, query: string) =>
     api.post('/whatsapp/send-location', { to, query }),
   adminConnect: (userId: string) => api.post('/whatsapp/admin/connect', { userId }),
+  createConnectLink: (userId: string) => api.post('/whatsapp/admin/connect-link', { userId }),
   adminDisconnect: (sessionId: string) => api.post(`/whatsapp/admin/disconnect/${sessionId}`),
 }
 

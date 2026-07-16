@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './contexts/AuthContext'
 import Layout from './components/Layout/Layout'
 import Login from './pages/Login'
+import ConnectPublic from './pages/ConnectPublic'
 import Dashboard from './pages/Dashboard'
 import Attendance from './pages/Attendance'
 import CRM from './pages/CRM'
@@ -46,6 +47,9 @@ export default function App() {
         path="/login"
         element={user ? <Navigate to="/dashboard" replace /> : <Login />}
       />
+
+      {/* Público: link de conexão de WhatsApp (sem login) */}
+      <Route path="/conectar/:token" element={<ConnectPublic />} />
 
       <Route
         element={

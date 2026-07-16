@@ -4,7 +4,8 @@ import { getSocket } from '../services/socket'
 import { WhatsAppSession, User, SessionStatus } from '../types'
 import toast from 'react-hot-toast'
 import {
-  Smartphone, Plus, Trash2, CheckCircle, X, Phone, Loader2, QrCode, RefreshCw, User as UserIcon
+  Smartphone, Plus, Trash2, CheckCircle, X, Phone, Loader2, QrCode, RefreshCw,
+  User as UserIcon, Link as LinkIcon, Copy
 } from 'lucide-react'
 
 type SessionWithUser = WhatsAppSession & { user?: { id: string; name: string; email: string } }
@@ -26,6 +27,10 @@ export default function AdminWhatsApp() {
   const [selectedUserId, setSelectedUserId] = useState('')
   const [connecting, setConnecting] = useState(false)
   const [qrSession, setQrSession] = useState<{ id: string; userName: string; qrCode?: string } | null>(null)
+
+  // Link público de conexão (mandar pro atendente conectar sozinho)
+  const [linking, setLinking] = useState(false)
+  const [linkResult, setLinkResult] = useState<{ url: string; userName: string } | null>(null)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -117,6 +122,33 @@ export default function AdminWhatsApp() {
     } catch { toast.error('Erro ao remover') }
   }
 
+  async function genConnectLink() {
+    if (!selectedUserId) { toast.error('Escolha um atendente'); return }
+    setLinking(true)
+    try {
+      const res = await whatsappApi.createConnectLink(selectedUserId)
+      const { url, userName } = res.data.data
+      setShowPicker(false)
+      setSelectedUserId('')
+      setLinkResult({ url, userName })
+      loadSessions()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao gerar link')
+    } finally {
+      setLinking(false)
+    }
+  }
+
+  async function copyLink() {
+    if (!linkResult) return
+    try {
+      await navigator.clipboard.writeText(linkResult.url)
+      toast.success('Link copiado!')
+    } catch {
+      toast.error('Não consegui copiar — selecione e copie manualmente')
+    }
+  }
+
   async function reconnect(s: SessionWithUser) {
     // Reabre o QR de uma sessão existente que está aguardando
     setQrSession({ id: s.id, userName: s.user?.name || 'Atendente', qrCode: s.qrCode })
@@ -190,6 +222,43 @@ export default function AdminWhatsApp() {
         </div>
       )}
 
+      {/* Modal: link público gerado */}
+      {linkResult && (
+        <div className="modal-overlay" onClick={() => setLinkResult(null)}>
+          <div className="modal-panel max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-text-primary flex items-center gap-2">
+                <LinkIcon size={18} className="text-primary" /> Link para {linkResult.userName}
+              </h3>
+              <button onClick={() => setLinkResult(null)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
+            </div>
+            <p className="text-xs text-text-muted mb-4">
+              Mande este link para <b>{linkResult.userName}</b>. Ela abre, escaneia o QR e o WhatsApp
+              conecta — <b>sem precisar de login</b>. Válido por 24h.
+            </p>
+
+            <div className="flex gap-2">
+              <input readOnly value={linkResult.url} onFocus={(e) => e.currentTarget.select()}
+                className="input flex-1 text-xs font-mono" />
+              <button onClick={copyLink} className="btn-primary px-3 flex items-center gap-1.5">
+                <Copy size={14} /> Copiar
+              </button>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-xl p-3 mt-4"
+              style={{ background: 'rgba(234,179,8,.08)', border: '1px solid rgba(234,179,8,.25)' }}>
+              <Smartphone size={15} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] text-amber-200/90 leading-relaxed">
+                Avise que o link deve ser aberto <b>no computador</b> — não dá pra escanear o QR
+                pelo mesmo celular que está com a tela aberta.
+              </p>
+            </div>
+
+            <button className="btn-ghost w-full border border-border mt-4" onClick={() => setLinkResult(null)}>Fechar</button>
+          </div>
+        </div>
+      )}
+
       {/* Modal: escolher atendente */}
       {showPicker && (
         <div className="modal-overlay" onClick={() => setShowPicker(false)}>
@@ -201,7 +270,8 @@ export default function AdminWhatsApp() {
               <button onClick={() => setShowPicker(false)} className="text-text-muted hover:text-text-primary"><X size={18} /></button>
             </div>
             <p className="text-xs text-text-muted mb-4">
-              Escolha o atendente que vai ser dono deste número. Em seguida você escaneia o QR Code com o WhatsApp.
+              Escolha o atendente dono do número. Depois: <b>Gerar QR</b> pra escanear aqui,
+              ou <b>Gerar link</b> pra mandar pro atendente conectar sozinho.
             </p>
             <div>
               <label className="text-sm text-text-muted">Atendente / dono do número *</label>
@@ -213,10 +283,12 @@ export default function AdminWhatsApp() {
               </select>
             </div>
             <div className="flex gap-2 mt-5">
-              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={startConnect} disabled={connecting}>
-                {connecting ? <><Loader2 size={16} className="animate-spin" /> Gerando QR...</> : <><QrCode size={16} /> Gerar QR Code</>}
+              <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={startConnect} disabled={connecting || linking}>
+                {connecting ? <><Loader2 size={16} className="animate-spin" /> Gerando QR...</> : <><QrCode size={16} /> Gerar QR aqui</>}
               </button>
-              <button className="btn-ghost flex-1 border border-border" onClick={() => setShowPicker(false)}>Cancelar</button>
+              <button className="btn-ghost flex-1 border border-border flex items-center justify-center gap-2" onClick={genConnectLink} disabled={connecting || linking}>
+                {linking ? <><Loader2 size={16} className="animate-spin" /> Gerando...</> : <><LinkIcon size={16} /> Gerar link</>}
+              </button>
             </div>
           </div>
         </div>

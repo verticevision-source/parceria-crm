@@ -92,6 +92,10 @@ model WhatsAppSession {
   status         SessionStatus @default(WAITING_QR)
   qrCode         String?       @db.Text
   provider       String        @default("mock")
+  // Link público de conexão: o vendedor abre /conectar/<token> e escaneia o QR
+  // sem precisar de login no CRM. Token aleatório e com validade.
+  connectToken    String?   @unique
+  connectTokenExp DateTime?
   connectedAt    DateTime?
   disconnectedAt DateTime?
   createdAt      DateTime      @default(now())
