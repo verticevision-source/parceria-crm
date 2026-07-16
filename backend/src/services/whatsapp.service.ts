@@ -109,18 +109,16 @@ function setupMessageListener(): void {
         })
         logger.info(`[WhatsAppService] Novo contato criado: ${contact.name} (${phone})`)
       } else {
-        const reassign = contact.userId !== ownerUserId
+        // NÃO reatribui o contato ao dono do número. Quem define o responsável é
+        // a ROLETA (distribuição). Antes, cada msg nova no número da frente (adm)
+        // roubava o lead de volta pro adm, atropelando o vendedor que o pegou.
         const newName = (message.senderName?.trim() && (contact.name === contact.phone || !contact.name))
           ? message.senderName.trim() : undefined
-        if (reassign || newName) {
+        if (newName) {
           contact = await prisma.contact.update({
             where: { id: contact.id },
-            data: {
-              ...(reassign ? { userId: ownerUserId } : {}),
-              ...(newName ? { name: newName } : {}),
-            },
+            data: { name: newName },
           })
-          if (reassign) logger.info(`[WhatsAppService] Contato ${phone} reatribuído ao dono do número (${ownerUserId})`)
         }
       }
 
@@ -156,7 +154,8 @@ function setupMessageListener(): void {
         conversation = await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
-            userId: ownerUserId,   // garante que a conversa fica com o dono do número
+            // NÃO mexe no userId: quem define o responsável é a ROLETA. Antes isso
+            // devolvia a conversa pro dono do número (adm) a cada msg do cliente.
             whatsappSessionId: session.id,  // mantém a conversa na sessão ativa (evita apontar p/ sessão velha)
             lastMessage: message.body,
             lastMessageAt: message.timestamp,
@@ -269,12 +268,8 @@ async function handleOutgoingMirror(
       data: { userId: ownerUserId, name: phone, phone },
     })
     logger.info(`[WhatsAppService] Novo contato criado (msg de saída): ${phone}`)
-  } else if (contact.userId !== ownerUserId) {
-    contact = await prisma.contact.update({
-      where: { id: contact.id },
-      data: { userId: ownerUserId },
-    })
   }
+  // Não reatribui contato existente: o responsável é definido pela ROLETA.
 
   let conversation = await prisma.conversation.findFirst({
     where: { contactId: contact.id },
@@ -297,7 +292,7 @@ async function handleOutgoingMirror(
     conversation = await prisma.conversation.update({
       where: { id: conversation.id },
       data: {
-        userId: ownerUserId,
+        // userId inalterado — quem define o responsável é a ROLETA
         lastMessage: message.body,
         lastMessageAt: message.timestamp,
         unreadCount: 0, // o atendente respondeu → zera não-lidas
