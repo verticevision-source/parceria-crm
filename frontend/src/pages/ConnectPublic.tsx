@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'react-router-dom'
+import { useParams, useSearchParams } from 'react-router-dom'
 import { api } from '../services/api'
 import { Smartphone, CheckCircle2, Loader2, AlertTriangle, Monitor } from 'lucide-react'
 
@@ -11,6 +11,9 @@ type State = { userName: string; status: string; qrCode?: string }
  */
 export default function ConnectPublic() {
   const { token } = useParams<{ token: string }>()
+  const [params] = useSearchParams()
+  // ?s=1 → modo limpo: só o QR, sem marca/identificação nenhuma
+  const clean = params.get('s') === '1'
   const [state, setState] = useState<State | null>(null)
   const [invalid, setInvalid] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -44,14 +47,20 @@ export default function ConnectPublic() {
       <div className="w-full max-w-md rounded-3xl p-7 text-center shadow-2xl"
         style={{ background: '#0f1622', border: '1px solid rgba(255,255,255,.08)' }}>
 
-        {/* Marca */}
-        <div className="flex items-center justify-center gap-2 mb-1">
-          <span className="text-2xl">🤝</span>
-          <h1 className="text-lg font-extrabold tracking-tight text-white">
-            Leads <span style={{ color: '#eab308' }}>Parceria Financeira</span>
-          </h1>
-        </div>
-        <p className="text-xs text-white/40 mb-6">Conexão de WhatsApp</p>
+        {/* Marca — escondida no modo limpo (?s=1) */}
+        {clean ? (
+          <h1 className="text-base font-bold text-white/90 mb-5">Conectar WhatsApp</h1>
+        ) : (
+          <>
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className="text-2xl">🤝</span>
+              <h1 className="text-lg font-extrabold tracking-tight text-white">
+                Leads <span style={{ color: '#eab308' }}>Parceria Financeira</span>
+              </h1>
+            </div>
+            <p className="text-xs text-white/40 mb-6">Conexão de WhatsApp</p>
+          </>
+        )}
 
         {loading ? (
           <div className="py-16 flex flex-col items-center gap-3 text-white/60">
@@ -69,14 +78,15 @@ export default function ConnectPublic() {
             <CheckCircle2 size={56} className="text-green-400" />
             <p className="text-xl font-bold text-white">WhatsApp conectado! 🎉</p>
             <p className="text-sm text-white/60">
-              Tudo certo, <b className="text-white/80">{state?.userName}</b>. Pode fechar esta página.
+              {clean ? 'Tudo certo. Pode fechar esta página.' : <>Tudo certo, <b className="text-white/80">{state?.userName}</b>. Pode fechar esta página.</>}
             </p>
           </div>
         ) : (
           <>
             <p className="text-white/80 text-sm mb-4">
-              Olá, <b className="text-white">{state?.userName}</b>! Escaneie o código abaixo
-              para conectar seu WhatsApp.
+              {clean
+                ? 'Escaneie o código abaixo para conectar seu WhatsApp.'
+                : <>Olá, <b className="text-white">{state?.userName}</b>! Escaneie o código abaixo para conectar seu WhatsApp.</>}
             </p>
 
             {/* Aviso: precisa de outra tela pra escanear */}

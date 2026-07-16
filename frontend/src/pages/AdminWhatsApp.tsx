@@ -30,6 +30,7 @@ export default function AdminWhatsApp() {
 
   // Link público de conexão (mandar pro atendente conectar sozinho)
   const [linking, setLinking] = useState(false)
+  const [cleanLink, setCleanLink] = useState(false)  // link sem marca (só o QR)
   const [linkResult, setLinkResult] = useState<{ url: string; userName: string } | null>(null)
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -130,7 +131,8 @@ export default function AdminWhatsApp() {
       const { url, userName } = res.data.data
       setShowPicker(false)
       setSelectedUserId('')
-      setLinkResult({ url, userName })
+      // ?s=1 = página sem marca, só o QR
+      setLinkResult({ url: cleanLink ? `${url}?s=1` : url, userName })
       loadSessions()
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Erro ao gerar link')
@@ -282,6 +284,14 @@ export default function AdminWhatsApp() {
                 ))}
               </select>
             </div>
+            <label className="flex items-center gap-2 cursor-pointer select-none mt-3">
+              <input type="checkbox" checked={cleanLink} onChange={(e) => setCleanLink(e.target.checked)}
+                className="w-4 h-4 rounded accent-primary" />
+              <span className="text-xs text-text-primary">
+                Link <b>sem marca</b> <span className="text-text-muted">(só o QR, não identifica a empresa)</span>
+              </span>
+            </label>
+
             <div className="flex gap-2 mt-5">
               <button className="btn-primary flex-1 flex items-center justify-center gap-2" onClick={startConnect} disabled={connecting || linking}>
                 {connecting ? <><Loader2 size={16} className="animate-spin" /> Gerando QR...</> : <><QrCode size={16} /> Gerar QR aqui</>}
