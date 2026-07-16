@@ -208,11 +208,16 @@ function setupMessageListener(): void {
       if (message.type === 'TEXT') {
         try {
           const { ChatFlowService } = await import('./chatFlow.service')
-          // Continua um fluxo aguardando resposta
+          // Continua um fluxo aguardando resposta (independe do número)
           botHandled = await ChatFlowService.handleInbound(conversation.id, message.body, ownerId, contact.phone)
-          // Ou inicia o fluxo para conversa nova
+          // Inicia o fluxo só em conversa NOVA e SÓ no número do ADM (o da campanha).
+          // Nos números dos vendedores o robô não roda — lá o cliente já é atendido
+          // por eles e não faz sentido perguntar cidade de novo.
           if (!botHandled && isNewConversation) {
-            botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
+            const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
+            if (owner?.role === 'ADMIN') {
+              botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
+            }
           }
         } catch (e) {
           logger.error('[WhatsAppService] Erro no fluxo do chatbot:', e)

@@ -259,10 +259,11 @@ export class ChatFlowService {
       return
     }
 
-    // Interessado + cidade atendida → roteia p/ pool + nota interna + msg cliente
+    // Interessado + cidade atendida → distribui PRIMEIRO (pra saber quem pegou),
+    // depois avisa o cliente que esse vendedor vai chamar (de outro número).
     if (served) {
-      const custMsg = d.msgServed || 'Ótimo! ✅ Já vou te encaminhar pra um consultor, que já vai te atender. Aguarde um instante. 🙌'
-      await WhatsAppService.sendMessage(userId, phone, custMsg).catch(() => {})
+      let vendorName: string | null = null
+      let leadId: string | null = null
       try {
         const result = await RouletteService.distributeToCity({
           contactId: session.contactId,
@@ -270,13 +271,23 @@ export class ChatFlowService {
           source: 'robo-qualificado',
           notes: `🤖 Robô — Cidade: ${city} | Modalidade: ${modalityLabel}`,
         })
-        if (result?.lead?.id) {
-          await prisma.cRMNote.create({
-            data: { leadId: result.lead.id, userId, content: `🤖 Lead qualificado pelo robô\nCidade: ${city}\nModalidade: ${modalityLabel}` },
-          }).catch(() => {})
-        }
+        vendorName = result?.assignedUser?.name || null
+        leadId = result?.lead?.id || null
       } catch (e: any) {
         logger.warn(`[Flow] cityRoute sem agente disponível: ${e.message}`)
+      }
+
+      // {vendedor} = nome de quem pegou o lead. Avisar que virá de OUTRO número
+      // faz o cliente esperar a mensagem e não estranhar/denunciar.
+      const tpl = d.msgServed
+        || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
+      const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
+      await WhatsAppService.sendMessage(userId, phone, custMsg).catch(() => {})
+
+      if (leadId) {
+        await prisma.cRMNote.create({
+          data: { leadId, userId, content: `🤖 Lead qualificado pelo robô\nCidade: ${city}\nModalidade: ${modalityLabel}` },
+        }).catch(() => {})
       }
       return
     }
@@ -316,7 +327,7 @@ export class ChatFlowService {
       { id: 'q_city', type: 'flowNode', position: { x: 300, y: 150 }, data: { type: 'question', saveAs: 'city', text: 'Olá! 😊 Pra te encaminhar pro consultor certo, me diz: de qual cidade você é?' } },
       { id: 'q_mod', type: 'flowNode', position: { x: 300, y: 290 }, data: { type: 'modalityQuestion', saveAs: 'modality', text: 'Como você prefere pagar o empréstimo?', optDaily: 'POR DIA', optWeekly: 'POR SEMANA', optNone: 'Não tenho interesse', warnText: '⚠️ IMPORTANTE: não trabalhamos com empréstimo MENSAL (por mês).' } },
       { id: 'route', type: 'flowNode', position: { x: 300, y: 430 }, data: { type: 'cityRoute',
-          msgServed: 'Ótimo! ✅ Já vou te encaminhar pra um consultor, que já vai te atender. Aguarde um instante. 🙌',
+          msgServed: 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌',
           msgOutOfArea: 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚',
           msgNotInterested: 'Sem problemas! 😊 Agradecemos o contato. Se mudar de ideia, é só chamar aqui. 👋' } },
     ]
