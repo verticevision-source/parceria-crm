@@ -263,6 +263,7 @@ export class ChatFlowService {
     // depois avisa o cliente que esse vendedor vai chamar (de outro número).
     if (served) {
       let vendorName: string | null = null
+      let vendorUserId: string | null = null
       let leadId: string | null = null
       try {
         const result = await RouletteService.distributeToCity({
@@ -272,6 +273,7 @@ export class ChatFlowService {
           notes: `🤖 Robô — Cidade: ${city} | Modalidade: ${modalityLabel}`,
         })
         vendorName = result?.assignedUser?.name || null
+        vendorUserId = result?.assignedUser?.id || null
         leadId = result?.lead?.id || null
       } catch (e: any) {
         logger.warn(`[Flow] cityRoute sem agente disponível: ${e.message}`)
@@ -283,6 +285,21 @@ export class ChatFlowService {
         || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
       const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
       await WhatsAppService.sendMessage(userId, phone, custMsg).catch(() => {})
+
+      // O vendedor PUXA a conversa pelo número DELE. Sem isso o lead só aparece
+      // no painel — no WhatsApp dele não existe conversa (o cliente nunca falou
+      // com o número dele). Esta 1ª msg faz a conversa nascer no celular dele.
+      if (vendorUserId) {
+        const vTpl = d.msgVendorFirst
+          || 'Oi! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato — você é de *{cidade}* e quer o empréstimo *{modalidade}*, certo?\n\nVou te atender a partir de agora! 🙌'
+        const vMsg = vTpl
+          .replace(/\{vendedor\}/gi, vendorName || 'seu consultor')
+          .replace(/\{cidade\}/gi, city)
+          .replace(/\{modalidade\}/gi, modalityLabel)
+        await WhatsAppService.sendMessage(vendorUserId, phone, vMsg).catch((e: any) =>
+          logger.warn(`[Flow] Vendedor ${vendorName} não conseguiu puxar a conversa (sem número conectado?): ${e?.message}`)
+        )
+      }
 
       if (leadId) {
         await prisma.cRMNote.create({
@@ -328,6 +345,7 @@ export class ChatFlowService {
       { id: 'q_mod', type: 'flowNode', position: { x: 300, y: 290 }, data: { type: 'modalityQuestion', saveAs: 'modality', text: 'Como você prefere pagar o empréstimo?', optDaily: 'POR DIA', optWeekly: 'POR SEMANA', optNone: 'Não tenho interesse', warnText: '⚠️ IMPORTANTE: não trabalhamos com empréstimo MENSAL (por mês).' } },
       { id: 'route', type: 'flowNode', position: { x: 300, y: 430 }, data: { type: 'cityRoute',
           msgServed: 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌',
+          msgVendorFirst: 'Oi! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato — você é de *{cidade}* e quer o empréstimo *{modalidade}*, certo?\n\nVou te atender a partir de agora! 🙌',
           msgOutOfArea: 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚',
           msgNotInterested: 'Sem problemas! 😊 Agradecemos o contato. Se mudar de ideia, é só chamar aqui. 👋' } },
     ]

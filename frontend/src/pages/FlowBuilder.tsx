@@ -367,10 +367,11 @@ export default function FlowBuilder() {
                   vão pro Kanban. Coloque <b>depois</b> do nó Dia/Semana.
                 </p>
                 <p className="text-[11px] text-sky-300/80">
-                  Dica: use <b>{'{vendedor}'}</b> na 1ª mensagem — vira o nome de quem pegou o lead.
+                  Variáveis: <b>{'{vendedor}'}</b>, <b>{'{cidade}'}</b>, <b>{'{modalidade}'}</b>.
                 </p>
                 {[
-                  { f: 'msgServed', l: 'Msg ao cliente (atendido → vendedor)' },
+                  { f: 'msgServed', l: 'Msg ao cliente (pelo número da frente)' },
+                  { f: 'msgVendorFirst', l: '1ª msg do VENDEDOR (sai do número dele → a conversa nasce no WhatsApp dele)' },
                   { f: 'msgOutOfArea', l: 'Msg fora de área (quer, mas não atendemos)' },
                   { f: 'msgNotInterested', l: 'Msg sem interesse' },
                 ].map(({ f, l }) => (
