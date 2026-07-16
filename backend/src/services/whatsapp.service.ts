@@ -246,6 +246,35 @@ function setupMessageListener(): void {
 }
 
 /**
+ * Devolve o endereço correto para ENVIAR a um contato.
+ *
+ * O WhatsApp endereça vários contatos por LID: só entrega em "<id>@lid".
+ * Mandar pro número puro fica PENDING pra sempre e SEM erro. Como o webhook não
+ * traz o @lid, descobrimos pela API do Evolution na 1ª vez e memorizamos no
+ * contato. Se não achar, cai no número (comportamento antigo).
+ */
+async function resolveSendTarget(
+  sessionId: string,
+  contact: { id: string; phone: string; lid?: string | null },
+  fallback: string,
+): Promise<string> {
+  if (contact.lid) return contact.lid
+  const provider = getWhatsAppProvider() as any
+  if (typeof provider.resolveLid !== 'function') return fallback
+  try {
+    const lid = await provider.resolveLid(sessionId, contact.phone)
+    if (lid) {
+      await prisma.contact.update({ where: { id: contact.id }, data: { lid } }).catch(() => {})
+      logger.info(`[WhatsAppService] LID descoberto para ${contact.phone}: ${lid}`)
+      return lid
+    }
+  } catch (e: any) {
+    logger.warn(`[WhatsAppService] Falha ao resolver LID de ${contact.phone}: ${e?.message}`)
+  }
+  return fallback
+}
+
+/**
  * Espelha no CRM uma mensagem enviada pelo próprio número por fora do CRM
  * (o atendente respondeu pelo celular / WhatsApp Web). Registra como direção
  * OUT, sem disparar bot/IA/auto-tag/remarketing.
@@ -722,7 +751,8 @@ export class WhatsAppService {
     const provider = getWhatsAppProvider()
     // Endereçamento LID: se o contato tem @lid, o envio TEM que ir pra lá —
     // mandar pro número puro fica PENDING e nunca entrega.
-    const result = await provider.sendMessage(session.id, contact.lid || to, body)
+    const target = await resolveSendTarget(session.id, contact, to)
+    const result = await provider.sendMessage(session.id, target, body)
 
     const message = await prisma.message.create({
       data: {
@@ -828,7 +858,7 @@ export class WhatsAppService {
     const provider = getWhatsAppProvider()
     // IMPORTANTE: o await tem que envolver a CHAMADA, não a referência da função.
     // `await x.sendFile ? a : b` avalia (await x.sendFile) primeiro → bug (result vira Promise).
-    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
+    const target = await resolveSendTarget(session.id, contact, to)
     const result = (provider as any).sendFile
       ? await (provider as any).sendFile(session.id, target, file)
       : await provider.sendMessage(session.id, target, `[Arquivo: ${file.filename}]`)
@@ -900,7 +930,7 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
-    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
+    const target = await resolveSendTarget(session.id, contact, to)
     const result = (provider as any).sendAudio
       ? await (provider as any).sendAudio(session.id, target, audioData, mimetype)
       : await provider.sendMessage(session.id, target, '[Áudio]')
@@ -1012,7 +1042,7 @@ export class WhatsAppService {
     }
 
     const provider = getWhatsAppProvider()
-    const target = contact.lid || to  // LID quando existir (senão fica PENDING)
+    const target = await resolveSendTarget(session.id, contact, to)
     const result = (provider as any).sendLocation
       ? await (provider as any).sendLocation(session.id, target, latitude, longitude, name)
       : await provider.sendMessage(session.id, target, `Localização: https://maps.google.com/?q=${latitude},${longitude}`)

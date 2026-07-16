@@ -77,6 +77,30 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
     }
   }
 
+  /**
+   * Descobre o JID "@lid" de um número.
+   *
+   * O WhatsApp passou a endereçar contatos por LID: a entrega só acontece em
+   * "<id>@lid" — mandar para "<numero>@s.whatsapp.net" fica PENDING pra sempre
+   * (sem erro). O webhook do Evolution entrega só o número normalizado, mas a
+   * key guardada tem o par (remoteJid=@lid, remoteJidAlt=numero). Buscamos por
+   * remoteJidAlt para achar o @lid correspondente.
+   */
+  async resolveLid(sessionId: string, number: string): Promise<string | null> {
+    const num = number.replace(/@.*$/, '')
+    try {
+      const data = await this.req<any>('POST', `/chat/findMessages/${sessionId}`, {
+        where: { key: { remoteJidAlt: `${num}@s.whatsapp.net` } },
+        limit: 1,
+      })
+      const records = data?.messages?.records || data?.records || (Array.isArray(data) ? data : [])
+      const jid = records?.[0]?.key?.remoteJid
+      return typeof jid === 'string' && jid.endsWith('@lid') ? jid : null
+    } catch {
+      return null
+    }
+  }
+
   // ── Conexão ───────────────────────────────────────────────────────────────
 
   async connect(sessionId: string, _userId: string): Promise<ConnectionStatus> {
