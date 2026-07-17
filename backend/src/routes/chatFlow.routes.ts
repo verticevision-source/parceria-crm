@@ -1,4 +1,5 @@
 import { Router } from 'express'
+import { prisma } from '../config/database'
 import { ChatFlowController } from '../controllers/chatFlow.controller'
 import { ChatFlowService } from '../services/chatFlow.service'
 import { authMiddleware } from '../middlewares/auth.middleware'
@@ -14,6 +15,30 @@ router.post('/qualification-template', asyncHandler(async (_req, res) => {
   const flow = await ChatFlowService.createQualificationFlow()
   res.status(201).json({ success: true, data: flow })
 }))
+/**
+ * POST /flows/start-for-conversation — inicia o robô numa conversa existente.
+ * Usado para recuperar leads que ficaram sem resposta (o robô só inicia sozinho
+ * em conversa nova). Recomeça do zero se já houver sessão do robô.
+ */
+router.post('/start-for-conversation', asyncHandler(async (req, res) => {
+  const { conversationId } = req.body
+  if (!conversationId) {
+    res.status(400).json({ success: false, message: 'conversationId é obrigatório' })
+    return
+  }
+  const conv = await prisma.conversation.findUnique({
+    where: { id: conversationId },
+    include: { contact: true },
+  })
+  if (!conv || !conv.contactId || !conv.contact) {
+    res.status(404).json({ success: false, message: 'Conversa (ou contato) não encontrada' })
+    return
+  }
+  await prisma.chatFlowSession.deleteMany({ where: { conversationId } })
+  const started = await ChatFlowService.startForConversation(conv.id, conv.contactId, conv.userId, conv.contact.phone)
+  res.json({ success: true, data: { started, phone: conv.contact.phone } })
+}))
+
 router.get('/:id', asyncHandler(ChatFlowController.get))
 router.post('/', asyncHandler(ChatFlowController.create))
 router.put('/:id', asyncHandler(ChatFlowController.update))
