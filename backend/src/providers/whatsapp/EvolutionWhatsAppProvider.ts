@@ -203,10 +203,16 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   async sendMessage(sessionId: string, to: string, body: string): Promise<SendMessageResult> {
     const number = this.normalizeNumber(to)
+    // Humaniza o envio: o `delay` faz o Evolution mostrar "digitando..." pelo
+    // período antes de soltar a mensagem. Sem isso a API envia instantâneo e em
+    // rajada — assinatura de automação que o WhatsApp flagra (device_removed).
+    // 2,5–6,5s aleatório ~ tempo de digitação humana de uma frase.
+    const typingDelay = 2500 + Math.floor(Math.random() * 4000)
     const data = await this.sendWithLidFallback(number, (target) =>
       this.req<any>('POST', `/message/sendText/${sessionId}`, {
         number: target,
         text: body,
+        delay: typingDelay,
       }),
     )
     return {
@@ -231,6 +237,7 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         caption: '',
         media: file.data,        // base64 puro, sem prefixo data:
         fileName: file.filename,
+        delay: 2000 + Math.floor(Math.random() * 2500),  // humaniza (anti-flag)
       }),
     )
     return {
@@ -246,6 +253,7 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
         number: target,
         audio: audioBase64,
         encoding: true,   // Evolution re-codifica para opus/ogg compatível com WhatsApp
+        delay: 2500 + Math.floor(Math.random() * 3000),  // "gravando áudio..." (anti-flag)
       }),
     )
     return {
