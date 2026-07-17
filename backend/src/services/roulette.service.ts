@@ -161,23 +161,38 @@ export class RouletteService {
 
   // ── Distribui um lead para o próximo agente ativo ─────────────────────────
 
-  // Normaliza texto para casar cidade (sem acento, minúsculo)
+  // Normaliza texto para casar cidade: sem acento, minúsculo, e colapsa
+  // pontuação/espaços (ex: "s. j. rio-preto" -> "s j rio preto").
   private static normCity(s: string): string {
-    return (s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().trim()
+    return (s || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, ' ')  // vira espaço: hífen, ponto, vírgula, emoji...
+      .trim()
+  }
+
+  // Casa o termo como PALAVRA/FRASE inteira dentro do texto do cliente.
+  // Evita falso-positivo do "contém" puro (ex: "guara" casar "guararapes",
+  // "df" casar palavras que tenham "df"). "rio preto" continua casando
+  // "sou de rio preto" porque é frase inteira.
+  private static matchesTerm(city: string, term: string): boolean {
+    if (!term) return false
+    const esc = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    return new RegExp(`(^|\\s)${esc}(\\s|$)`).test(city)
   }
 
   // ── Acha TODOS os grupos (times) que atendem uma cidade ───────────────────
   // Uma cidade pode estar em vários grupos (ex: Rio Preto). Retorna todos que
-  // casam pelo nome/apelidos (keywords). Usado pelo robô p/ decidir se atende,
+  // casam pelos apelidos (keywords). Usado pelo robô p/ decidir se atende,
   // se oferece semanal, e p/ montar o pool de vendedores.
   static async findTeamsForCity(cityText: string) {
     const city = RouletteService.normCity(cityText)
     if (!city) return []
     const teams = await prisma.rouletteTeam.findMany({ where: { isActive: true } })
     return teams.filter((t) => {
-      const terms = [t.name, ...((t.keywords || '').split(','))]
-        .map((x) => RouletteService.normCity(x)).filter(Boolean)
-      return terms.some((term) => city.includes(term))
+      // só as keywords casam a cidade (o nome do time é só rótulo)
+      const terms = (t.keywords || '').split(',').map((x) => RouletteService.normCity(x)).filter(Boolean)
+      return terms.some((term) => RouletteService.matchesTerm(city, term))
     })
   }
 
