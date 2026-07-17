@@ -153,6 +153,26 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       try { await this.req('POST', `/proxy/set/${sessionId}`, { proxy: proxyConfig }) } catch {}
     }
 
+    // Configurações anti-bloqueio (comportamento mais humano / menos suspeito):
+    // - rejectCall: rejeita chamadas automaticamente (número de robô que recebe
+    //   ligação e nunca atende é sinal de bot) + manda um recado educado.
+    // - groupsIgnore: ignora mensagens de grupo (o robô não deve responder grupo).
+    // - readMessages: marca como lida antes de responder (humano lê, depois digita).
+    try {
+      await this.req('POST', `/settings/set/${sessionId}`, {
+        rejectCall: true,
+        msgCall: 'Ola! No momento nao conseguimos atender ligacoes por aqui. Pode me chamar por mensagem que eu te respondo.',
+        groupsIgnore: true,
+        alwaysOnline: false,
+        readMessages: true,
+        readStatus: false,
+        syncFullHistory: false,
+      })
+      logger.info(`[Evolution] Settings anti-bloqueio aplicados: ${sessionId}`)
+    } catch {
+      logger.warn(`[Evolution] Falha ao aplicar settings: ${sessionId}`)
+    }
+
     // Dispara geração do QR e captura imediatamente se disponível
     let qrCode: string | undefined
     try {
