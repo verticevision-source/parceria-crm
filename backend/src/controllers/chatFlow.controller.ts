@@ -17,8 +17,8 @@ export class ChatFlowController {
     res.status(201).json({ success: true, data: await ChatFlowService.create(name) })
   }
   static async update(req: AuthRequest, res: Response) {
-    const { name, isActive, nodes, edges } = req.body
-    res.json({ success: true, data: await ChatFlowService.update(req.params.id, { name, isActive, nodes, edges }) })
+    const { name, isActive, nodes, edges, whatsappSessionId } = req.body
+    res.json({ success: true, data: await ChatFlowService.update(req.params.id, { name, isActive, nodes, edges, whatsappSessionId }) })
   }
   static async remove(req: AuthRequest, res: Response) {
     await ChatFlowService.remove(req.params.id)
