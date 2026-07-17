@@ -35,7 +35,20 @@ router.post('/start-for-conversation', asyncHandler(async (req, res) => {
     return
   }
   await prisma.chatFlowSession.deleteMany({ where: { conversationId } })
-  const started = await ChatFlowService.startForConversation(conv.id, conv.contactId, conv.userId, conv.contact.phone)
+  // Envia SEMPRE pelo número amarrado ao fluxo (o da campanha) — nunca pelo
+  // dono da conversa (que pode ser um vendedor, após redistribuição/timeout).
+  let senderUserId = conv.userId
+  const flow = await ChatFlowService.getActiveFlow()
+  const boundSessionId = (flow as any)?.whatsappSessionId as string | null
+  if (boundSessionId) {
+    const bound = await prisma.whatsAppSession.findUnique({ where: { id: boundSessionId }, select: { userId: true, status: true } })
+    if (!bound || bound.status !== 'CONNECTED') {
+      res.status(409).json({ success: false, message: 'O número do robô (campanha) não está conectado' })
+      return
+    }
+    senderUserId = bound.userId
+  }
+  const started = await ChatFlowService.startForConversation(conv.id, conv.contactId, senderUserId, conv.contact.phone)
   res.json({ success: true, data: { started, phone: conv.contact.phone } })
 }))
 
