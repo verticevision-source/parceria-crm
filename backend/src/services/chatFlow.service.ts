@@ -272,8 +272,12 @@ export class ChatFlowService {
 
     const d = node.data
     const modalityLabel = choice === 'dia' ? 'POR DIA' : choice === 'semana' ? 'POR SEMANA' : '-'
+    // versão amigável p/ o cliente (evita o "POR DIA" gritado/robótico)
+    const modalityFriendly = choice === 'dia' ? 'no plano diário' : choice === 'semana' ? 'no plano semanal' : ''
     const teams = await RouletteService.findTeamsForCity(city)
     const served = teams.length > 0
+    // Nome LIMPO da cidade (a keyword que casou), não a resposta crua do cliente
+    const cityDisplay = (await RouletteService.matchedCityName(city)) || city.replace(/\s+/g, ' ').trim()
 
     // Não interessado (qualquer cidade) → agradece + Kanban "Não interessados"
     if (choice === 'nao') {
@@ -295,7 +299,7 @@ export class ChatFlowService {
           contactId: session.contactId,
           cityText: city,
           source: 'robo-qualificado',
-          notes: `🤖 Robô — Cidade: ${city} | Modalidade: ${modalityLabel}`,
+          notes: `🤖 Robô — Cidade: ${cityDisplay} | Modalidade: ${modalityLabel}`,
         })
         vendorName = result?.assignedUser?.name || null
         vendorUserId = result?.assignedUser?.id || null
@@ -316,11 +320,11 @@ export class ChatFlowService {
       // com o número dele). Esta 1ª msg faz a conversa nascer no celular dele.
       if (vendorUserId) {
         const vTpl = d.msgVendorFirst
-          || 'Oi! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato — você é de *{cidade}* e quer o empréstimo *{modalidade}*, certo?\n\nVou te atender a partir de agora! 🙌'
+          || 'Olá! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato sobre o crédito em {cidade} e, a partir de agora, sou eu que vou cuidar do seu atendimento. 🙌\n\nPosso te explicar como funciona?'
         const vMsg = vTpl
           .replace(/\{vendedor\}/gi, vendorName || 'seu consultor')
-          .replace(/\{cidade\}/gi, city)
-          .replace(/\{modalidade\}/gi, modalityLabel)
+          .replace(/\{cidade\}/gi, cityDisplay)
+          .replace(/\{modalidade\}/gi, modalityFriendly || modalityLabel)
         await WhatsAppService.sendMessage(vendorUserId, phone, vMsg).catch((e: any) =>
           logger.warn(`[Flow] Vendedor ${vendorName} não conseguiu puxar a conversa (sem número conectado?): ${e?.message}`)
         )
@@ -328,7 +332,7 @@ export class ChatFlowService {
 
       if (leadId) {
         await prisma.cRMNote.create({
-          data: { leadId, userId, content: `🤖 Lead qualificado pelo robô\nCidade: ${city}\nModalidade: ${modalityLabel}` },
+          data: { leadId, userId, content: `🤖 Lead qualificado pelo robô\nCidade: ${cityDisplay}\nModalidade: ${modalityLabel}` },
         }).catch(() => {})
       }
       return
@@ -338,7 +342,7 @@ export class ChatFlowService {
     const oat = d.msgOutOfArea || 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚'
     await WhatsAppService.sendMessage(userId, phone, oat).catch((e: any) => logger.warn('[Flow] Falha ao enviar fora-de-area: ' + e?.message))
     const stageId = await ChatFlowService.ensureStage('Fora de área', '#f59e0b')
-    await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-fora-area', `Robô: fora de área. Cidade: ${city} | ${modalityLabel}`)
+    await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-fora-area', `Robô: fora de área. Cidade: ${cityDisplay} | ${modalityLabel}`)
   }
 
   /** Garante uma etapa global do Kanban pelo nome (cria se não existir). */
@@ -369,8 +373,8 @@ export class ChatFlowService {
       { id: 'q_city', type: 'flowNode', position: { x: 300, y: 150 }, data: { type: 'question', saveAs: 'city', text: 'Olá! 😊 Pra te encaminhar pro consultor certo, me diz: de qual cidade você é?' } },
       { id: 'q_mod', type: 'flowNode', position: { x: 300, y: 290 }, data: { type: 'modalityQuestion', saveAs: 'modality', text: 'Como você prefere pagar o empréstimo?', optDaily: 'POR DIA', optWeekly: 'POR SEMANA', optNone: 'Não tenho interesse', warnText: '⚠️ IMPORTANTE: não trabalhamos com empréstimo MENSAL (por mês).' } },
       { id: 'route', type: 'flowNode', position: { x: 300, y: 430 }, data: { type: 'cityRoute',
-          msgServed: 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌',
-          msgVendorFirst: 'Oi! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato — você é de *{cidade}* e quer o empréstimo *{modalidade}*, certo?\n\nVou te atender a partir de agora! 🙌',
+          msgServed: 'Perfeito! ✅ Já passei seu contato para {vendedor}, da nossa equipe. Em instantes {vendedor} vai falar com você por aqui.\n\nPode chegar de um número diferente — é da Parceria Financeira, pode responder tranquilo. 🙌',
+          msgVendorFirst: 'Olá! 😊 Aqui é {vendedor}, da Parceria Financeira.\n\nRecebi seu contato sobre o crédito em {cidade} e, a partir de agora, sou eu que vou cuidar do seu atendimento. 🙌\n\nPosso te explicar como funciona?',
           msgOutOfArea: 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚',
           msgNotInterested: 'Sem problemas! 😊 Agradecemos o contato. Se mudar de ideia, é só chamar aqui. 👋' } },
     ]

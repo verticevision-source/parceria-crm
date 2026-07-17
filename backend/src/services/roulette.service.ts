@@ -181,6 +181,10 @@ export class RouletteService {
     return new RegExp(`(^|\\s)${esc}(\\s|$)`).test(city)
   }
 
+  private static titleCase(s: string): string {
+    return s.split(' ').filter(Boolean).map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')
+  }
+
   // ── Acha TODOS os grupos (times) que atendem uma cidade ───────────────────
   // Uma cidade pode estar em vários grupos (ex: Rio Preto). Retorna todos que
   // casam pelos apelidos (keywords). Usado pelo robô p/ decidir se atende,
@@ -194,6 +198,21 @@ export class RouletteService {
       const terms = (t.keywords || '').split(',').map((x) => RouletteService.normCity(x)).filter(Boolean)
       return terms.some((term) => RouletteService.matchesTerm(city, term))
     })
+  }
+
+  // Nome LIMPO da cidade que casou (a keyword, capitalizada), para exibir na
+  // mensagem/nota — em vez de repetir a resposta crua ("Boa noite. Botucatu SP").
+  static async matchedCityName(cityText: string): Promise<string | null> {
+    const city = RouletteService.normCity(cityText)
+    if (!city) return null
+    const teams = await prisma.rouletteTeam.findMany({ where: { isActive: true } })
+    for (const t of teams) {
+      const terms = (t.keywords || '').split(',').map((x) => RouletteService.normCity(x)).filter(Boolean)
+      for (const term of terms) {
+        if (RouletteService.matchesTerm(city, term)) return RouletteService.titleCase(term)
+      }
+    }
+    return null
   }
 
   // ── Distribui um lead para os vendedores de uma cidade ───────────────────
@@ -266,10 +285,20 @@ export class RouletteService {
       throw new Error(`Nenhum agente ativo na roleta${teamMsg} no momento`)
     }
 
+    // PREFERE vendedores com número WhatsApp CONECTADO: no modelo "vendedor puxa
+    // a conversa", quem não tem número não consegue chamar o cliente (o robô
+    // prometeu "fulano vai te chamar" e ninguém chama). Se ninguém do grupo tem
+    // número, cai no pool inteiro (pelo menos o lead fica atribuído).
+    const connectedUserIds = new Set(
+      (await prisma.whatsAppSession.findMany({ where: { status: 'CONNECTED' }, select: { userId: true } })).map((s) => s.userId)
+    )
+    const withNumber = activeAgents.filter((a) => connectedUserIds.has(a.userId))
+    const pool = withNumber.length > 0 ? withNumber : activeAgents
+
     // Aplica peso: expande lista conforme peso de cada agente
     // Ex: weight=2 → aparece 2x na lista, recebe o dobro de leads
     const weightedList: typeof activeAgents = []
-    for (const agent of activeAgents) {
+    for (const agent of pool) {
       for (let i = 0; i < agent.weight; i++) {
         weightedList.push(agent)
       }
