@@ -219,6 +219,13 @@ function setupMessageListener(): void {
               botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
             }
           }
+          // Resposta TARDIA (depois do timeout) no número da campanha: reengata
+          // a qualificação em vez de deixar a mensagem sem robô.
+          if (!botHandled && !isNewConversation) {
+            if (await ChatFlowService.canStartOnSession(session.id, ownerUserId)) {
+              botHandled = await ChatFlowService.maybeRestartAfterReply(conversation.id, contact.id, ownerId, contact.phone)
+            }
+          }
         } catch (e) {
           logger.error('[WhatsAppService] Erro no fluxo do chatbot:', e)
         }

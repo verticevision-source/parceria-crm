@@ -60,13 +60,14 @@ setSocketIO(io)
 setRouletteSocketIO(io)
 setInternalChatIO(io)
 
-// Verifica timeouts do chatbot a cada 5 minutos
+// Timeout do chatbot: verifica a cada 10 min, mas só encerra sessão parada há
+// 8h (o cliente pode responder horas depois — leads da madrugada de manhã).
 setInterval(async () => {
   try {
     const { ChatFlowService } = await import('./services/chatFlow.service')
-    await ChatFlowService.processTimeouts(30)
+    await ChatFlowService.processTimeouts(480)
   } catch { /* silencioso */ }
-}, 5 * 60 * 1000)
+}, 10 * 60 * 1000)
 
 // Poller de mensagens agendadas
 import('./services/scheduledMessage.service')

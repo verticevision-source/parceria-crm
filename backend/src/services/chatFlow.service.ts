@@ -382,20 +382,41 @@ export class ChatFlowService {
     return prisma.chatFlow.create({ data: { name: 'Qualificação por Cidade (robô)', nodes: nodes as any, edges: edges as any, isActive: false } })
   }
 
-  /** Verifica timeouts: sessões aguardando há muito tempo recebem handoff. */
-  static async processTimeouts(timeoutMinutes = 30): Promise<void> {
+  /**
+   * Timeout de sessões do robô. Janela LONGA (8h): o cliente pode responder
+   * horas depois (leads da madrugada respondem de manhã). Ao estourar, NÃO
+   * despeja o lead num vendedor aleatório (era o bug: virava lead sem cidade
+   * na mão da Stela). Só marca 'done' e joga no Kanban "Não respondeu", pra
+   * follow-up manual — sem qualificação inventada e sem cold outbound.
+   */
+  static async processTimeouts(timeoutMinutes = 480): Promise<void> {
     const cutoff = new Date(Date.now() - timeoutMinutes * 60_000)
     const stale = await prisma.chatFlowSession.findMany({
       where: { status: 'waiting', waitingSince: { lt: cutoff } },
-      take: 20,
+      take: 30,
     })
     for (const s of stale) {
       await prisma.chatFlowSession.update({ where: { id: s.id }, data: { status: 'done' } })
       try {
-        const { RouletteService } = await import('./roulette.service')
-        await RouletteService.distribute({ contactId: s.contactId, source: 'chatbot-timeout', notes: 'Cliente não respondeu ao robô' })
-        logger.info(`[Flow] Timeout: ${s.conversationId} encaminhado à roleta`)
-      } catch { /* sem agente ativo */ }
+        const conv = await prisma.conversation.findUnique({ where: { id: s.conversationId }, select: { userId: true } })
+        const stageId = await ChatFlowService.ensureStage('Não respondeu', '#a1a1aa')
+        await ChatFlowService.leadToStage(s.contactId, conv?.userId || s.contactId, stageId, 'robo-sem-resposta', 'Robô: cliente não respondeu à qualificação')
+        logger.info(`[Flow] Timeout (${timeoutMinutes}min): ${s.conversationId} → Kanban "Não respondeu"`)
+      } catch (e: any) { logger.warn(`[Flow] Timeout sem stage: ${e?.message}`) }
     }
+  }
+
+  /**
+   * Reengata o robô quando o cliente responde DEPOIS do timeout (sessão 'done'
+   * que nunca completou). Sem isso, resposta tardia ficava sem qualificação.
+   * Retorna true se reiniciou o fluxo.
+   */
+  static async maybeRestartAfterReply(conversationId: string, contactId: string, userId: string, phone: string): Promise<boolean> {
+    const session = await prisma.chatFlowSession.findUnique({ where: { conversationId } })
+    // Só reengata sessão que ESTOUROU sem terminar a qualificação (parou numa pergunta)
+    if (!session || session.status !== 'done') return false
+    if (session.currentNodeId !== 'q_city' && session.currentNodeId !== 'q_mod') return false
+    await prisma.chatFlowSession.delete({ where: { id: session.id } }).catch(() => {})
+    return ChatFlowService.startForConversation(conversationId, contactId, userId, phone)
   }
 }
