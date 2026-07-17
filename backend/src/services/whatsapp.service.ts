@@ -713,12 +713,10 @@ export class WhatsAppService {
       where: { userId, status: 'CONNECTED' },
       orderBy: { createdAt: 'desc' },  // prefere a sessão reconectada mais recente
     })
-    if (!session) {
-      session = await prisma.whatsAppSession.findFirst({
-        where: { status: 'CONNECTED' },
-        orderBy: { createdAt: 'desc' },
-      })
-    }
+    // NUNCA cair para "qualquer número conectado": isso já fez o robô enviar
+    // pelo número de outro vendedor quando o número da frente caiu — expondo o
+    // número dele a contato frio (risco de ban). Melhor falhar alto.
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada para este usuário')
 
     if (!session) throw new Error('Nenhuma sessão conectada encontrada')
 
@@ -966,11 +964,12 @@ export class WhatsAppService {
     userId: string, to: string,
     templateName: string, language: string, variables: string[], previewText: string
   ) {
-    let session = await prisma.whatsAppSession.findFirst({ where: { userId, status: 'CONNECTED' } })
-    if (!session) {
-      session = await prisma.whatsAppSession.findFirst({ where: { status: 'CONNECTED' }, orderBy: { createdAt: 'desc' } })
-    }
-    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+    // Só o número DO PRÓPRIO usuário — sem fallback para o número de outro
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada para este usuário')
 
     const phone = normalizePhone(to)
     let contact = await findContactGlobal(phone)
@@ -1016,11 +1015,12 @@ export class WhatsAppService {
     userId: string, to: string,
     latitude: number, longitude: number, name?: string
   ) {
-    let session = await prisma.whatsAppSession.findFirst({ where: { userId, status: 'CONNECTED' } })
-    if (!session) {
-      session = await prisma.whatsAppSession.findFirst({ where: { status: 'CONNECTED' }, orderBy: { createdAt: 'desc' } })
-    }
-    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+    // Só o número DO PRÓPRIO usuário — sem fallback para o número de outro
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },
+    })
+    if (!session) throw new Error('Nenhuma sessão conectada encontrada para este usuário')
 
     const phone = normalizePhone(to)
     let contact = await findContactGlobal(phone)

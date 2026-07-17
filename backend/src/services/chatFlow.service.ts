@@ -63,6 +63,17 @@ export class ChatFlowService {
     const flow = await ChatFlowService.getActiveFlow()
     if (!flow) return false
 
+    // Não inicia se o dono não tem número conectado: o fluxo ficaria "mudo"
+    // (perguntas que nunca saem) e o lead sumiria sem atendimento.
+    const canSend = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+      select: { id: true },
+    })
+    if (!canSend) {
+      logger.warn(`[Flow] Não iniciado p/ ${phone}: dono da conversa sem número conectado`)
+      return false
+    }
+
     const nodes = (flow.nodes as unknown as FlowNode[]) || []
     const start = nodes.find((n) => n.data?.type === 'start')
     if (!start) return false
@@ -133,14 +144,14 @@ export class ChatFlowService {
       }
 
       if (t === 'message') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
+        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
         const next = outEdges(currentId)[0]
         currentId = next?.target || null
         continue
       }
 
       if (t === 'question') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
+        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
         // pausa aguardando resposta
         await prisma.chatFlowSession.update({
           where: { id: sessionId },
@@ -162,7 +173,7 @@ export class ChatFlowService {
       }
 
       if (t === 'handoff') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
+        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
         await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
         // Encaminha para a roleta (time específico se node.data.teamId)
         try {
@@ -182,7 +193,7 @@ export class ChatFlowService {
 
       // Encaminha para a roleta da CIDADE (casa a última resposta com um time)
       if (t === 'cityHandoff') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch(() => {})
+        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
         await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
         try {
           const { RouletteService } = await import('./roulette.service')
@@ -216,7 +227,7 @@ export class ChatFlowService {
           ? `${head}\n\n1️⃣ ${optDaily}\n2️⃣ ${optWeekly}\n3️⃣ ${optNone}\n\n${warn}\n\nResponda com 1, 2 ou 3.`
           : `${head}\n\n1️⃣ ${optDaily}\n2️⃣ ${optNone}\n\n${warn}\n\nResponda com 1 ou 2.`
 
-        await WhatsAppService.sendMessage(userId, phone, text).catch(() => {})
+        await WhatsAppService.sendMessage(userId, phone, text).catch((e: any) => logger.warn('[Flow] Falha ao enviar pergunta: ' + e?.message))
         const vars = { ...((session.vars as any) || {}), weeklyOffered }
         await prisma.chatFlowSession.update({
           where: { id: sessionId },
@@ -267,7 +278,7 @@ export class ChatFlowService {
     // Não interessado (qualquer cidade) → agradece + Kanban "Não interessados"
     if (choice === 'nao') {
       const msg = d.msgNotInterested || 'Sem problemas! 😊 Agradecemos o contato. Se mudar de ideia, é só chamar aqui. 👋'
-      await WhatsAppService.sendMessage(userId, phone, msg).catch(() => {})
+      await WhatsAppService.sendMessage(userId, phone, msg).catch((e: any) => logger.warn('[Flow] Falha ao enviar msg final: ' + e?.message))
       const stageId = await ChatFlowService.ensureStage('Não interessados', '#94a3b8')
       await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-nao-interesse', `Robô: não tem interesse. Cidade informada: ${city || '-'}`)
       return
@@ -298,7 +309,7 @@ export class ChatFlowService {
       const tpl = d.msgServed
         || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
       const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
-      await WhatsAppService.sendMessage(userId, phone, custMsg).catch(() => {})
+      await WhatsAppService.sendMessage(userId, phone, custMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente: ' + e?.message))
 
       // O vendedor PUXA a conversa pelo número DELE. Sem isso o lead só aparece
       // no painel — no WhatsApp dele não existe conversa (o cliente nunca falou
@@ -325,7 +336,7 @@ export class ChatFlowService {
 
     // Interessado + cidade NÃO atendida → msg fora de área + Kanban "Fora de área"
     const oat = d.msgOutOfArea || 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚'
-    await WhatsAppService.sendMessage(userId, phone, oat).catch(() => {})
+    await WhatsAppService.sendMessage(userId, phone, oat).catch((e: any) => logger.warn('[Flow] Falha ao enviar fora-de-area: ' + e?.message))
     const stageId = await ChatFlowService.ensureStage('Fora de área', '#f59e0b')
     await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-fora-area', `Robô: fora de área. Cidade: ${city} | ${modalityLabel}`)
   }
