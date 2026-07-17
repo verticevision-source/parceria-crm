@@ -1,6 +1,7 @@
 import { Response } from 'express'
 import { z } from 'zod'
 import { WhatsAppService } from '../services/whatsapp.service'
+import { prisma } from '../config/database'
 import { AuthRequest } from '../types'
 
 const sendSchema = z.object({
@@ -106,6 +107,38 @@ export class WhatsAppController {
       success: true,
       data: { token, userName, expiresAt, url: `${base}/conectar/${token}` },
     })
+  }
+
+  /**
+   * POST /whatsapp/admin/route-to-vendor — atribui um lead a um vendedor e o
+   * vendedor "puxa" a conversa pelo NÚMERO DELE (aparece no WhatsApp dele +
+   * reengaja o cliente). Usado para recuperar leads (ex: rejeitados por engano).
+   */
+  static async routeToVendor(req: AuthRequest, res: Response): Promise<void> {
+    const { phone, vendorUserId, message } = req.body
+    if (!phone || !vendorUserId) {
+      res.status(400).json({ success: false, message: 'phone e vendorUserId são obrigatórios' })
+      return
+    }
+    const contact = await prisma.contact.findFirst({ where: { phone } })
+    if (!contact) { res.status(404).json({ success: false, message: 'Contato não encontrado' }); return }
+
+    // reatribui lead + conversa ao vendedor e tira de "Fora de área"
+    const firstStage = await prisma.pipelineStage.findFirst({ where: { boardId: null }, orderBy: { order: 'asc' } })
+    await prisma.lead.updateMany({
+      where: { contactId: contact.id, status: 'OPEN' },
+      data: { responsibleUserId: vendorUserId, ...(firstStage ? { pipelineStageId: firstStage.id } : {}), lastInteractionAt: new Date() },
+    })
+    await prisma.contact.update({ where: { id: contact.id }, data: { userId: vendorUserId } })
+    await prisma.conversation.updateMany({ where: { contactId: contact.id }, data: { userId: vendorUserId } })
+
+    // vendedor puxa a conversa pelo número dele (se houver mensagem)
+    let sent = false
+    if (message) {
+      try { await WhatsAppService.sendMessage(vendorUserId, phone, message); sent = true }
+      catch (e: any) { res.status(409).json({ success: false, message: `Lead atribuído, mas o envio falhou: ${e?.message}` }); return }
+    }
+    res.json({ success: true, data: { assigned: true, sent } })
   }
 
   static async sendMedia(req: AuthRequest, res: Response): Promise<void> {
