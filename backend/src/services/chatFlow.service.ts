@@ -27,7 +27,21 @@ export class ChatFlowService {
     const startNode = { id: 'start', type: 'flowNode', position: { x: 250, y: 40 }, data: { type: 'start', label: 'Início' } }
     return prisma.chatFlow.create({ data: { name, nodes: [startNode] as any, edges: [] as any } })
   }
-  static async update(id: string, data: { name?: string; isActive?: boolean; nodes?: any; edges?: any }) {
+  /**
+   * O fluxo ativo pode INICIAR neste número?
+   * - Se o fluxo está amarrado a um número (whatsappSessionId), só roda nele.
+   * - Sem amarração, mantém o comportamento antigo: só em números de ADMIN.
+   */
+  static async canStartOnSession(sessionId: string, ownerUserId: string): Promise<boolean> {
+    const flow = await ChatFlowService.getActiveFlow()
+    if (!flow) return false
+    const bound = (flow as any).whatsappSessionId as string | null
+    if (bound) return bound === sessionId
+    const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
+    return owner?.role === 'ADMIN'
+  }
+
+  static async update(id: string, data: { name?: string; isActive?: boolean; nodes?: any; edges?: any; whatsappSessionId?: string | null }) {
     // Se ativar este, desativa os outros (um fluxo ativo por vez)
     if (data.isActive === true) {
       await prisma.chatFlow.updateMany({ where: { id: { not: id } }, data: { isActive: false } })

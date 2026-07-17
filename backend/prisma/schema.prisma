@@ -563,6 +563,9 @@ model ChatFlow {
   isActive  Boolean  @default(false)
   nodes     Json     @default("[]")  // nós do React Flow
   edges     Json     @default("[]")  // conexões do React Flow
+  // Número (sessão) em que o robô roda. Null = qualquer número de ADMIN (legado).
+  // Amarrar aqui evita o robô disparar num número que não é o da campanha.
+  whatsappSessionId String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

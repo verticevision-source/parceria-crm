@@ -4,11 +4,11 @@ import ReactFlow, {
   Handle, Position, type Connection, type Edge, type Node, type NodeProps,
 } from 'reactflow'
 import 'reactflow/dist/style.css'
-import { flowsApi } from '../services/api'
+import { flowsApi, whatsappApi } from '../services/api'
 import toast from 'react-hot-toast'
 import {
   Workflow, Plus, Save, Trash2, MessageCircle, HelpCircle, GitBranch,
-  UserCheck, Play, X, ArrowLeft, Power, MapPin, Calendar, Route
+  UserCheck, Play, X, ArrowLeft, Power, MapPin, Calendar, Route, Smartphone
 } from 'lucide-react'
 
 // ── Tipos de nó ──
@@ -66,7 +66,18 @@ export default function FlowBuilder() {
   const [selectedNode, setSelectedNode] = useState<Node | null>(null)
   const idCounter = useRef(1)
 
-  useEffect(() => { loadFlows() }, [])
+  // Número (sessão) em que o robô roda — o da campanha
+  const [boundSessionId, setBoundSessionId] = useState<string>('')
+  const [sessions, setSessions] = useState<Array<{ id: string; phoneNumber?: string | null; user?: { name: string } }>>([])
+
+  useEffect(() => { loadFlows(); loadSessions() }, [])
+
+  async function loadSessions() {
+    try {
+      const res = await whatsappApi.getAllSessions()
+      setSessions((res.data.data || []).filter((s: any) => s.status === 'CONNECTED'))
+    } catch { /* silencioso */ }
+  }
 
   async function loadFlows() {
     setLoading(true)
@@ -82,6 +93,7 @@ export default function FlowBuilder() {
       const res = await flowsApi.get(id)
       const f = res.data.data
       setActiveFlowId(f.id); setFlowName(f.name); setFlowActive(f.isActive)
+      setBoundSessionId(f.whatsappSessionId || '')
       setNodes(f.nodes || []); setEdges(f.edges || [])
       setSelectedNode(null)
       // ajusta contador de ids
@@ -162,7 +174,10 @@ export default function FlowBuilder() {
     if (!activeFlowId) return
     setSaving(true)
     try {
-      await flowsApi.update(activeFlowId, { name: flowName, isActive: flowActive, nodes, edges })
+      await flowsApi.update(activeFlowId, {
+        name: flowName, isActive: flowActive, nodes, edges,
+        whatsappSessionId: boundSessionId || null,
+      })
       toast.success('Fluxo salvo!')
       loadFlows()
     } catch { toast.error('Erro ao salvar') }
@@ -240,7 +255,21 @@ export default function FlowBuilder() {
       <div className="flex items-center gap-3 p-3 border-b border-border bg-bg-secondary flex-shrink-0 flex-wrap">
         <button onClick={() => setActiveFlowId(null)} className="text-text-muted hover:text-text-primary p-1"><ArrowLeft size={18} /></button>
         <input value={flowName} onChange={(e) => setFlowName(e.target.value)}
-          className="input-field py-1.5 text-sm w-48" />
+          className="input-field py-1.5 text-sm w-40" />
+
+        {/* Número da campanha: o robô só dispara nele */}
+        <div className="flex items-center gap-1.5" title="O robô só inicia em conversa nova que chegar NESTE número">
+          <Smartphone size={14} className="text-text-muted" />
+          <select value={boundSessionId} onChange={(e) => setBoundSessionId(e.target.value)}
+            className="input-field py-1.5 text-xs w-56">
+            <option value="">Qualquer número do Administrador</option>
+            {sessions.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.user?.name || '?'}{s.phoneNumber ? ` · +${s.phoneNumber}` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="flex gap-1.5 flex-wrap">
           {Object.entries(NODE_TYPES_META).filter(([t]) => t !== 'start').map(([type, meta]) => {
             const Icon = meta.icon

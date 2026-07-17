@@ -212,12 +212,10 @@ function setupMessageListener(): void {
           const { ChatFlowService } = await import('./chatFlow.service')
           // Continua um fluxo aguardando resposta (independe do número)
           botHandled = await ChatFlowService.handleInbound(conversation.id, message.body, ownerId, contact.phone)
-          // Inicia o fluxo só em conversa NOVA e SÓ no número do ADM (o da campanha).
-          // Nos números dos vendedores o robô não roda — lá o cliente já é atendido
-          // por eles e não faz sentido perguntar cidade de novo.
+          // Inicia o fluxo só em conversa NOVA e só no número da campanha
+          // (amarrado no fluxo; sem amarração, qualquer número de ADMIN).
           if (!botHandled && isNewConversation) {
-            const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
-            if (owner?.role === 'ADMIN') {
+            if (await ChatFlowService.canStartOnSession(session.id, ownerUserId)) {
               botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
             }
           }
