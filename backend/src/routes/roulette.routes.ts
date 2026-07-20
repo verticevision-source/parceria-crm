@@ -12,7 +12,10 @@ router.get('/my-status',   authMiddleware, asyncHandler(RouletteController.mySta
 
 // ── Rotas admin ────────────────────────────────────────────────────────────
 router.get('/status',      authMiddleware, adminMiddleware, asyncHandler(RouletteController.status))
+router.get('/overview',    authMiddleware, adminMiddleware, asyncHandler(RouletteController.overview))
 router.patch('/agents/:userId/weight', authMiddleware, adminMiddleware, asyncHandler(RouletteController.setWeight))
+router.patch('/agents/:userId/active', authMiddleware, adminMiddleware, asyncHandler(RouletteController.setActive))
+router.patch('/agents/:userId/manual-outreach', authMiddleware, adminMiddleware, asyncHandler(RouletteController.setManualOutreach))
 router.post('/distribute', authMiddleware, adminMiddleware, asyncHandler(RouletteController.distribute))
 router.get('/logs',        authMiddleware, adminMiddleware, asyncHandler(RouletteController.logs))
 router.post('/reset-daily', authMiddleware, adminMiddleware, asyncHandler(RouletteController.resetDaily))

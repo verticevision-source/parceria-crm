@@ -163,6 +163,17 @@ export const whatsappApi = {
   adminConnect: (userId: string) => api.post('/whatsapp/admin/connect', { userId }),
   createConnectLink: (userId: string) => api.post('/whatsapp/admin/connect-link', { userId }),
   adminDisconnect: (sessionId: string) => api.post(`/whatsapp/admin/disconnect/${sessionId}`),
+  adminAssignSession: (sessionId: string, targetUserId: string) =>
+    api.post(`/whatsapp/admin/sessions/${sessionId}/reassign`, { targetUserId }),
+}
+
+// Roleta (visão unificada roleta + WhatsApp — Central de Vendedores)
+export const rouletteApi = {
+  getOverview: () => api.get('/roulette/overview'),
+  setActive: (userId: string, isActive: boolean) =>
+    api.patch(`/roulette/agents/${userId}/active`, { isActive }),
+  setManualOutreach: (userId: string, manualOutreach: boolean) =>
+    api.patch(`/roulette/agents/${userId}/manual-outreach`, { manualOutreach }),
 }
 
 // Conversations

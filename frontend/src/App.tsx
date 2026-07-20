@@ -10,6 +10,7 @@ import Contacts from './pages/Contacts'
 import Users from './pages/Users'
 import WhatsAppConfig from './pages/WhatsAppConfig'
 import AdminWhatsApp from './pages/AdminWhatsApp'
+import AdminSellers from './pages/AdminSellers'
 import Roulette from './pages/Roulette'
 import CRMBoards from './pages/CRMBoards'
 import BulkMessage from './pages/BulkMessage'
@@ -129,6 +130,15 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminWhatsApp />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/admin/sellers"
+          element={
+            <AdminRoute>
+              <AdminSellers />
             </AdminRoute>
           }
         />

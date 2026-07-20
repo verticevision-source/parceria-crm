@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import { api } from '../services/api'
 import toast from 'react-hot-toast'
@@ -59,6 +60,7 @@ interface RouletteLog {
 export default function Roulette() {
   const { user } = useAuth()
   const isAdmin = user?.role === 'ADMIN'
+  const [searchParams] = useSearchParams()
 
   const [myStatus, setMyStatus] = useState<{ isActive: boolean; leadsToday: number; leadsTotal: number } | null>(null)
   const [agents, setAgents] = useState<AgentStatus[]>([])
@@ -67,7 +69,11 @@ export default function Roulette() {
   const [logs, setLogs] = useState<RouletteLog[]>([])
   const [loading, setLoading] = useState(true)
   const [toggling, setToggling] = useState(false)
-  const [activeTab, setActiveTab] = useState<'agents' | 'campaigns' | 'teams'>('agents')
+  // Deep-link da Central de Vendedores (?tab=teams) — inicializa a aba certa
+  const initialTab = searchParams.get('tab')
+  const [activeTab, setActiveTab] = useState<'agents' | 'campaigns' | 'teams'>(
+    initialTab === 'campaigns' || initialTab === 'teams' ? initialTab : 'agents'
+  )
 
   // Modal nova campanha
   const [showNewCampaign, setShowNewCampaign] = useState(false)

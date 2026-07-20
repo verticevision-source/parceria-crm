@@ -30,5 +30,6 @@ router.post('/admin/connect', adminMiddleware, asyncHandler(WhatsAppController.a
 router.post('/admin/connect-link', adminMiddleware, asyncHandler(WhatsAppController.createConnectLink))
 router.post('/admin/route-to-vendor', adminMiddleware, asyncHandler(WhatsAppController.routeToVendor))
 router.post('/admin/disconnect/:sessionId', adminMiddleware, asyncHandler(WhatsAppController.adminDisconnect))
+router.post('/admin/sessions/:sessionId/reassign', adminMiddleware, asyncHandler(WhatsAppController.reassignSession))
 
 export default router

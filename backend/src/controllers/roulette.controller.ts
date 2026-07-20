@@ -26,6 +26,12 @@ export class RouletteController {
     res.json({ success: true, data })
   }
 
+  /** GET /api/roulette/overview — roleta + conexão WhatsApp cruzados (admin) */
+  static async overview(_req: AuthRequest, res: Response): Promise<void> {
+    const data = await RouletteService.getOverview()
+    res.json({ success: true, data })
+  }
+
   /** PATCH /api/roulette/agents/:userId/weight — configura peso (admin) */
   static async setWeight(req: AuthRequest, res: Response): Promise<void> {
     const { userId } = req.params
@@ -36,6 +42,30 @@ export class RouletteController {
     }
     await RouletteService.setWeight(userId, weight)
     res.json({ success: true, message: 'Peso atualizado' })
+  }
+
+  /** PATCH /api/roulette/agents/:userId/active — força ativar/desativar (admin) */
+  static async setActive(req: AuthRequest, res: Response): Promise<void> {
+    const { userId } = req.params
+    const { isActive } = req.body
+    if (typeof isActive !== 'boolean') {
+      res.status(400).json({ success: false, message: 'isActive (boolean) é obrigatório' })
+      return
+    }
+    await RouletteService.setActive(userId, isActive)
+    res.json({ success: true, message: isActive ? 'Vendedor ativado na roleta' : 'Vendedor desativado da roleta' })
+  }
+
+  /** PATCH /api/roulette/agents/:userId/manual-outreach — chip frágil (admin) */
+  static async setManualOutreach(req: AuthRequest, res: Response): Promise<void> {
+    const { userId } = req.params
+    const { manualOutreach } = req.body
+    if (typeof manualOutreach !== 'boolean') {
+      res.status(400).json({ success: false, message: 'manualOutreach (boolean) é obrigatório' })
+      return
+    }
+    await RouletteService.setManualOutreach(userId, manualOutreach)
+    res.json({ success: true, message: 'Abordagem manual atualizada' })
   }
 
   /** POST /api/roulette/distribute — distribui um lead manualmente (admin) */

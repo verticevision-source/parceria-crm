@@ -344,11 +344,11 @@ export class ChatFlowService {
       // ── Vendedor de "chip frágil" (aborda pelo CELULAR) ─────────────────────
       // Alguns chips têm restrição de dispositivo vinculado: a 1ª msg fria pela
       // API não entrega (fica PENDING), mas o que o vendedor digita no celular
-      // entrega 100%. Pra esses (listados em MANUAL_OUTREACH_EMAILS), NÃO fazemos
+      // entrega 100%. Pra esses (marcados na Central de Vendedores), NÃO fazemos
       // a abordagem fria; o robô avisa o CLIENTE que vão chamar e manda o contato
       // do lead pro WhatsApp do VENDEDOR (pela frente, que entrega), pra ele
       // chamar pelo celular.
-      if (vendorUserId && ChatFlowService.isManualOutreach(vendorEmail)) {
+      if (vendorUserId && await ChatFlowService.isManualOutreach(vendorUserId, vendorEmail)) {
         const tpl = d.msgServed
           || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
         const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
@@ -412,9 +412,14 @@ export class ChatFlowService {
   /**
    * Vendedor de "chip frágil" que deve abordar o lead pelo CELULAR (o robô só o
    * avisa, sem mandar a 1ª msg fria pela API — que não entrega nesses chips).
-   * Configurável por env MANUAL_OUTREACH_EMAILS (e-mails separados por vírgula).
+   * Fonte principal: RouletteAgent.manualOutreach (editável na Central de
+   * Vendedores). Fallback: env MANUAL_OUTREACH_EMAILS — mantido só até o admin
+   * confirmar os toggles na UI; remover depois (ver PENDENTE na memória do projeto).
    */
-  static isManualOutreach(email: string | null | undefined): boolean {
+  static async isManualOutreach(userId: string, email?: string | null): Promise<boolean> {
+    const agent = await prisma.rouletteAgent.findUnique({ where: { userId } })
+    if (agent?.manualOutreach === true) return true
+
     if (!email) return false
     const list = (process.env.MANUAL_OUTREACH_EMAILS || '')
       .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)

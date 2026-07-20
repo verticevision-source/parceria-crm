@@ -92,6 +92,18 @@ export class WhatsAppController {
     res.json({ success: true, data: session })
   }
 
+  /** POST /api/whatsapp/admin/sessions/:sessionId/reassign — reatribui o número a outro vendedor */
+  static async reassignSession(req: AuthRequest, res: Response): Promise<void> {
+    const { sessionId } = req.params
+    const { targetUserId } = req.body
+    if (!targetUserId) {
+      res.status(400).json({ success: false, message: 'targetUserId é obrigatório' })
+      return
+    }
+    const session = await WhatsAppService.assignSession(sessionId, targetUserId)
+    res.json({ success: true, data: session })
+  }
+
   // Send media file (multipart or base64 JSON)
   /** POST /api/whatsapp/admin/connect-link — gera link público de QR p/ um atendente */
   static async createConnectLink(req: AuthRequest, res: Response): Promise<void> {

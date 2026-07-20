@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { whatsappApi, usersApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { WhatsAppSession, User, SessionStatus } from '../types'
@@ -18,6 +19,7 @@ const STATUS_LABEL: Record<SessionStatus, string> = {
 }
 
 export default function AdminWhatsApp() {
+  const [searchParams] = useSearchParams()
   const [sessions, setSessions] = useState<SessionWithUser[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -56,6 +58,16 @@ export default function AdminWhatsApp() {
   useEffect(() => {
     Promise.all([loadSessions(), loadUsers()]).finally(() => setLoading(false))
   }, [loadSessions])
+
+  // Deep-link da Central de Vendedores (?userId=) — pré-seleciona e já abre o picker
+  useEffect(() => {
+    const userId = searchParams.get('userId')
+    if (userId) {
+      setSelectedUserId(userId)
+      setShowPicker(true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Socket: conexão concluída
   useEffect(() => {

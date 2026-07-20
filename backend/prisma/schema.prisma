@@ -401,15 +401,18 @@ model RouletteTeam {
 
 // Configuração de cada agente na roleta
 model RouletteAgent {
-  id          String    @id @default(uuid())
-  userId      String    @unique
-  isActive    Boolean   @default(false)
-  weight      Int       @default(1)
-  leadsToday  Int       @default(0)
-  leadsTotal  Int       @default(0)
-  lastLeadAt  DateTime?
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id             String    @id @default(uuid())
+  userId         String    @unique
+  isActive       Boolean   @default(false)
+  weight         Int       @default(1)
+  leadsToday     Int       @default(0)
+  leadsTotal     Int       @default(0)
+  lastLeadAt     DateTime?
+  // Vendedor de "chip frágil": robô só avisa ele, sem mandar a 1ª msg fria pela
+  // API (que não entrega nesses chips) — ele chama o cliente pelo celular.
+  manualOutreach Boolean   @default(false)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   user  User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
   teams RouletteAgentTeam[]  // many-to-many com times

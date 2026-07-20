@@ -462,6 +462,10 @@ function setupStatusListener(): void {
         if (qrCode) updateData.qrCode = qrCode
       }
 
+      // Guarda o status ANTERIOR antes de sobrescrever — só alerta numa
+      // transição real (evita espamar o admin a cada webhook repetido do provider).
+      const wasConnected = session.status === 'CONNECTED'
+
       await prisma.whatsAppSession.update({
         where: { id: session.id },
         data: updateData,
@@ -474,6 +478,17 @@ function setupStatusListener(): void {
           phoneNumber: status.phoneNumber,
           qrCode,
         })
+      }
+
+      // Alerta proativo: vendedor ATIVO na roleta acabou de cair. Sem isso,
+      // ninguém percebe até um cliente reclamar dias depois (caso Rosi/Vitor).
+      if (wasConnected && (status.status === 'DISCONNECTED' || status.status === 'ERROR')) {
+        const agent = await prisma.rouletteAgent.findUnique({ where: { userId: session.userId } })
+        if (agent?.isActive) {
+          WhatsAppService.notifyAdmin(
+            `🔴 *${session.user.name}* caiu do WhatsApp (número: ${session.phoneNumber || '—'}) e continua ATIVO na roleta.\nEle vai receber leads que não vai conseguir entregar até reconectar. Confira a Central de Vendedores.`,
+          ).catch(() => {})
+        }
       }
 
       logger.info(`[WhatsAppService] Status atualizado: ${session.id} → ${status.status}`)
@@ -873,10 +888,25 @@ export class WhatsAppService {
     const session = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
     if (!session) throw new Error('Sessão não encontrada')
 
-    return prisma.whatsAppSession.update({
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId } })
+    if (!targetUser) throw new Error('Usuário de destino não encontrado')
+
+    const updated = await prisma.whatsAppSession.update({
       where: { id: sessionId },
       data: { userId: targetUserId },
+      include: { user: { select: { id: true, name: true, email: true } } },
     })
+
+    if (io) {
+      io.to(`user:${targetUserId}`).to('admins').emit('whatsapp-status', {
+        sessionId: updated.id,
+        status: updated.status,
+        phoneNumber: updated.phoneNumber,
+        reassigned: true,
+      })
+    }
+
+    return updated
   }
 
   // Admin disconnects a session by ID

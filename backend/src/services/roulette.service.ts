@@ -67,6 +67,32 @@ export class RouletteService {
     if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
   }
 
+  // ── Admin: força ativar/desativar QUALQUER vendedor na roleta ─────────────
+  // (o toggle em /roulette/toggle só afeta o próprio usuário logado)
+
+  static async setActive(userId: string, isActive: boolean): Promise<void> {
+    await prisma.rouletteAgent.upsert({
+      where: { userId },
+      create: { userId, isActive },
+      update: { isActive },
+    })
+
+    if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
+  }
+
+  // ── Admin: vendedor de "chip frágil" (aborda o lead pelo celular) ─────────
+  // Espelha a env var MANUAL_OUTREACH_EMAILS num campo editável pela UI.
+
+  static async setManualOutreach(userId: string, manualOutreach: boolean): Promise<void> {
+    await prisma.rouletteAgent.upsert({
+      where: { userId },
+      create: { userId, manualOutreach },
+      update: { manualOutreach },
+    })
+
+    if (io) io.emit('roulette-status-update', await RouletteService.getStatus())
+  }
+
   // ── Admin: lista todos os agentes na roleta ───────────────────────────────
 
   static async getStatus() {
@@ -92,12 +118,53 @@ export class RouletteService {
       leadsToday: u.rouletteAgent?.leadsToday ?? 0,
       leadsTotal: u.rouletteAgent?.leadsTotal ?? 0,
       lastLeadAt: u.rouletteAgent?.lastLeadAt ?? null,
+      manualOutreach: u.rouletteAgent?.manualOutreach ?? false,
       teams: u.rouletteAgent?.teams.map(at => ({
         teamId: at.teamId,
         teamName: at.team.name,
         teamColor: at.team.color,
       })) ?? [],
     }))
+  }
+
+  // ── Admin: visão unificada roleta + conexão WhatsApp ──────────────────────
+  // Junta as duas fontes que hoje nunca se cruzam em tela nenhuma: quem
+  // DEVERIA receber lead (roleta ativa) x quem CONSEGUE entregar (sessão
+  // conectada). `atRisk` é o caso perigoso: ativo na roleta e sem número —
+  // exatamente o que aconteceu com a Rosi e o Vitor sem ninguém notar.
+  static async getOverview() {
+    const [agents, { WhatsAppService }] = await Promise.all([
+      RouletteService.getStatus(),
+      import('./whatsapp.service'),
+    ])
+    const sessions = await WhatsAppService.getAllSessions()
+
+    const sessionsByUser = new Map<string, typeof sessions>()
+    for (const s of sessions) {
+      const list = sessionsByUser.get(s.userId) ?? []
+      list.push(s)
+      sessionsByUser.set(s.userId, list)
+    }
+
+    return agents.map((agent) => {
+      const userSessions = sessionsByUser.get(agent.userId) ?? []
+      const hasConnected = userSessions.some((s) => s.status === 'CONNECTED')
+      const disconnectedAts = userSessions
+        .filter((s) => s.status !== 'CONNECTED')
+        .map((s) => s.disconnectedAt)
+        .filter((d): d is Date => d != null)
+      const disconnectedSince = disconnectedAts.length
+        ? new Date(Math.max(...disconnectedAts.map((d) => d.getTime())))
+        : null
+
+      return {
+        ...agent,
+        sessions: userSessions,
+        hasConnected,
+        disconnectedSince,
+        atRisk: agent.isActive && !hasConnected,
+      }
+    })
   }
 
   // ── Times ─────────────────────────────────────────────────────────────────
