@@ -788,6 +788,75 @@ export class WhatsAppService {
     mockProvider.simulateIncomingMessage(sessionId, from, body)
   }
 
+  /**
+   * Envia uma mensagem de sistema pelo número da FRENTE (sessão de um admin
+   * conectado). A frente é um número confiável, então entrega bem inclusive
+   * pros números internos da equipe. Retorna false se não há admin conectado.
+   */
+  private static async sendFromFront(to: string, text: string): Promise<boolean> {
+    const adminSession = await prisma.whatsAppSession.findFirst({
+      where: { status: 'CONNECTED', user: { role: 'ADMIN' } },
+      orderBy: { updatedAt: 'desc' },
+    })
+    if (!adminSession) {
+      logger.warn(`[sendFromFront] Sem número admin/frente conectado — não enviado: ${text.slice(0, 60)}`)
+      return false
+    }
+    await WhatsAppService.sendMessage(adminSession.userId, to, text)
+    return true
+  }
+
+  /**
+   * Alerta operacional pro admin no WhatsApp. Usado quando algo exige ação
+   * humana e não pode falhar em silêncio (ex.: lead qualificado mas nenhum
+   * vendedor do grupo tem número online pra chamar o cliente).
+   */
+  static async notifyAdmin(text: string): Promise<void> {
+    const to = process.env.ADMIN_ALERT_PHONE || '5517996569374'
+    try {
+      const ok = await WhatsAppService.sendFromFront(to, text)
+      if (ok) logger.info(`[Alerta admin] Enviado para ${to}`)
+    } catch (e: any) {
+      logger.warn(`[Alerta admin] Falha ao enviar: ${e?.message}`)
+    }
+  }
+
+  /**
+   * Avisa um VENDEDOR (no WhatsApp dele) que recebeu um lead, pela frente.
+   * Usado pros chips frágeis que abordam o cliente pelo celular: o robô não
+   * manda a 1ª msg fria pela API do vendedor (não entrega), só o avisa.
+   * Resolve o número do vendedor pela sessão dele (ou consultando a instância).
+   * Retorna true se conseguiu entregar o aviso.
+   */
+  static async notifySeller(sellerUserId: string, text: string): Promise<boolean> {
+    try {
+      const session = await prisma.whatsAppSession.findFirst({
+        where: { userId: sellerUserId, status: 'CONNECTED' },
+        orderBy: { updatedAt: 'desc' },
+      })
+      if (!session) {
+        logger.warn(`[notifySeller] Vendedor ${sellerUserId} sem sessão conectada`)
+        return false
+      }
+      let number = session.phoneNumber || ''
+      if (!number) {
+        // Campo em branco (bug de connect): resolve pela instância do Evolution
+        try {
+          const st = await getWhatsAppProvider().getStatus(session.id)
+          number = st.phoneNumber || ''
+        } catch { /* segue sem número */ }
+      }
+      if (!number) {
+        logger.warn(`[notifySeller] Não resolveu o número do vendedor ${sellerUserId}`)
+        return false
+      }
+      return await WhatsAppService.sendFromFront(number, text)
+    } catch (e: any) {
+      logger.warn(`[notifySeller] Falha: ${e?.message}`)
+      return false
+    }
+  }
+
   // Admin connects a number for a specific user
   static async connectForUser(adminId: string, targetUserId: string) {
     void adminId // caller must verify admin role before calling

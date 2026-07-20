@@ -223,7 +223,7 @@ export class RouletteService {
     cityText: string
     source?: string
     notes?: string
-  }): Promise<{ lead: any; assignedUser: any }> {
+  }): Promise<{ lead: any; assignedUser: any; noneOnline?: boolean }> {
     const matches = await RouletteService.findTeamsForCity(input.cityText)
 
     let teamIds: string[] = matches.map((t) => t.id)
@@ -253,7 +253,7 @@ export class RouletteService {
     teamId?: string
     teamIds?: string[]
     requireActive?: boolean
-  }): Promise<{ lead: any; assignedUser: any }> {
+  }): Promise<{ lead: any; assignedUser: any; noneOnline: boolean }> {
 
     // times explícitos têm prioridade (um ou vários); senão usa o time da campanha
     let teamIds: string[] = input.teamIds ?? (input.teamId ? [input.teamId] : [])
@@ -294,6 +294,10 @@ export class RouletteService {
     )
     const withNumber = activeAgents.filter((a) => connectedUserIds.has(a.userId))
     const pool = withNumber.length > 0 ? withNumber : activeAgents
+    // Ninguém do grupo tem número conectado: o lead ainda é atribuído (pra não
+    // sumir), mas quem chama o cliente precisa saber que NÃO dá pra "puxar a
+    // conversa" agora. Sinaliza pro caller segurar a promessa e alertar o admin.
+    const noneOnline = withNumber.length === 0
 
     // Aplica peso: expande lista conforme peso de cada agente
     // Ex: weight=2 → aparece 2x na lista, recebe o dobro de leads
@@ -375,9 +379,9 @@ export class RouletteService {
       io.emit('roulette-status-update', await RouletteService.getStatus())
     }
 
-    logger.info(`[Roleta] Lead ${lead.id} distribuído para ${chosen.user.name}`)
+    logger.info(`[Roleta] Lead ${lead.id} distribuído para ${chosen.user.name}${noneOnline ? ' (SEM número online no grupo)' : ''}`)
 
-    return { lead, assignedUser: chosen.user }
+    return { lead, assignedUser: chosen.user, noneOnline }
   }
 
   // ── Admin: reset de contadores diários ───────────────────────────────────

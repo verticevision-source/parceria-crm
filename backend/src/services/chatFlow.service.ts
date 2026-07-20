@@ -293,7 +293,11 @@ export class ChatFlowService {
     if (served) {
       let vendorName: string | null = null
       let vendorUserId: string | null = null
+      let vendorEmail: string | null = null
       let leadId: string | null = null
+      // true = o lead foi atribuído mas NENHUM vendedor do grupo tem número
+      // online agora → ninguém consegue "puxar a conversa". Segura a promessa.
+      let noneOnline = false
       try {
         const result = await RouletteService.distributeToCity({
           contactId: session.contactId,
@@ -303,9 +307,69 @@ export class ChatFlowService {
         })
         vendorName = result?.assignedUser?.name || null
         vendorUserId = result?.assignedUser?.id || null
+        vendorEmail = result?.assignedUser?.email || null
         leadId = result?.lead?.id || null
+        noneOnline = result?.noneOnline === true
       } catch (e: any) {
         logger.warn(`[Flow] cityRoute sem agente disponível: ${e.message}`)
+        // Sem NENHUM agente no grupo: alerta o admin (não some em silêncio).
+        await WhatsAppService.notifyAdmin(
+          `⚠️ Lead qualificado SEM vendedor disponível\nCidade: ${cityDisplay} | ${modalityLabel}\nCliente: ${phone}\nNão há agente ativo no grupo — atenda manualmente.`,
+        ).catch(() => {})
+      }
+
+      // ── Grupo inteiro offline: NÃO prometer contato imediato ────────────────
+      // O lead ficou atribuído (aparece no Kanban), mas a 1ª mensagem pelo número
+      // do vendedor falharia. Manda um aviso de "em breve", move pra um estágio de
+      // espera e alerta o admin, em vez de prometer "vai te chamar agora" e furar.
+      if (noneOnline) {
+        const holdMsg = d.msgQueued
+          || 'Recebido! ✅ Um consultor da sua região vai te chamar aqui no WhatsApp em breve. Obrigado pela paciência! 🙌'
+        await WhatsAppService.sendMessage(userId, phone, holdMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente (fila): ' + e?.message))
+
+        if (leadId) {
+          const stageId = await ChatFlowService.ensureStage('Aguardando atendimento', '#eab308')
+          await prisma.lead.update({ where: { id: leadId }, data: { pipelineStageId: stageId } }).catch(() => {})
+          await prisma.cRMNote.create({
+            data: { leadId, userId, content: `🤖 Lead qualificado — SEM vendedor online no grupo\nCidade: ${cityDisplay}\nModalidade: ${modalityLabel}\n⚠️ Atribuído a ${vendorName || 'vendedor'}, mas o número dele está offline. Reconectar/atender manual.` },
+          }).catch(() => {})
+        }
+
+        await WhatsAppService.notifyAdmin(
+          `⚠️ Lead qualificado, mas SEM número online no grupo\nCidade: ${cityDisplay} | ${modalityLabel}\nCliente: ${phone}\nAtribuído a: ${vendorName || '—'} (offline)\nReconecte o número ou atenda pelo painel.`,
+        ).catch(() => {})
+        return
+      }
+
+      // ── Vendedor de "chip frágil" (aborda pelo CELULAR) ─────────────────────
+      // Alguns chips têm restrição de dispositivo vinculado: a 1ª msg fria pela
+      // API não entrega (fica PENDING), mas o que o vendedor digita no celular
+      // entrega 100%. Pra esses (listados em MANUAL_OUTREACH_EMAILS), NÃO fazemos
+      // a abordagem fria; o robô avisa o CLIENTE que vão chamar e manda o contato
+      // do lead pro WhatsApp do VENDEDOR (pela frente, que entrega), pra ele
+      // chamar pelo celular.
+      if (vendorUserId && ChatFlowService.isManualOutreach(vendorEmail)) {
+        const tpl = d.msgServed
+          || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
+        const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
+        await WhatsAppService.sendMessage(userId, phone, custMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente: ' + e?.message))
+
+        const leadContact = await prisma.contact.findUnique({ where: { id: session.contactId } }).catch(() => null)
+        const leadName = leadContact?.name && leadContact.name !== phone ? leadContact.name : 'Cliente'
+        const sellerMsg = `🔔 *Novo lead pra você!*\n\n👤 ${leadName}\n📍 ${cityDisplay} — ${modalityFriendly || modalityLabel}\n\n👉 Chame o cliente: https://wa.me/${phone}\n\n_Chame pelo seu celular (o cliente já está te esperando)._`
+        const notified = await WhatsAppService.notifySeller(vendorUserId, sellerMsg).catch(() => false)
+        if (!notified) {
+          await WhatsAppService.notifyAdmin(
+            `⚠️ Lead de chip manual sem aviso entregue\nVendedor: ${vendorName || '—'}\nCidade: ${cityDisplay} | ${modalityLabel}\nCliente: ${phone}\nAvise o vendedor manualmente.`,
+          ).catch(() => {})
+        }
+
+        if (leadId) {
+          await prisma.cRMNote.create({
+            data: { leadId, userId, content: `🤖 Lead qualificado (abordagem manual pelo celular)\nCidade: ${cityDisplay}\nModalidade: ${modalityLabel}\nAviso enviado pro WhatsApp de ${vendorName || 'vendedor'}${notified ? '' : ' — FALHOU, avisar manual'}.` },
+          }).catch(() => {})
+        }
+        return
       }
 
       // {vendedor} = nome de quem pegou o lead. Avisar que virá de OUTRO número
@@ -343,6 +407,18 @@ export class ChatFlowService {
     await WhatsAppService.sendMessage(userId, phone, oat).catch((e: any) => logger.warn('[Flow] Falha ao enviar fora-de-area: ' + e?.message))
     const stageId = await ChatFlowService.ensureStage('Fora de área', '#f59e0b')
     await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-fora-area', `Robô: fora de área. Cidade: ${cityDisplay} | ${modalityLabel}`)
+  }
+
+  /**
+   * Vendedor de "chip frágil" que deve abordar o lead pelo CELULAR (o robô só o
+   * avisa, sem mandar a 1ª msg fria pela API — que não entrega nesses chips).
+   * Configurável por env MANUAL_OUTREACH_EMAILS (e-mails separados por vírgula).
+   */
+  static isManualOutreach(email: string | null | undefined): boolean {
+    if (!email) return false
+    const list = (process.env.MANUAL_OUTREACH_EMAILS || '')
+      .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean)
+    return list.includes(email.trim().toLowerCase())
   }
 
   /** Garante uma etapa global do Kanban pelo nome (cria se não existir). */
