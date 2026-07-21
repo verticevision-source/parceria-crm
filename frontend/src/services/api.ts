@@ -165,6 +165,8 @@ export const whatsappApi = {
   adminDisconnect: (sessionId: string) => api.post(`/whatsapp/admin/disconnect/${sessionId}`),
   adminAssignSession: (sessionId: string, targetUserId: string) =>
     api.post(`/whatsapp/admin/sessions/${sessionId}/reassign`, { targetUserId }),
+  routeToVendor: (phone: string, vendorUserId: string, message?: string) =>
+    api.post('/whatsapp/admin/route-to-vendor', { phone, vendorUserId, message }),
 }
 
 // Roleta (visão unificada roleta + WhatsApp — Central de Vendedores)
@@ -205,7 +207,7 @@ export const contactsApi = {
 
 // Leads
 export const leadsApi = {
-  findAll: (params?: { status?: string; stageId?: string; search?: string }) =>
+  findAll: (params?: { status?: string; stageId?: string; search?: string; source?: string }) =>
     api.get('/leads', { params }),
   findById: (id: string) => api.get(`/leads/${id}`),
   create: (data: object) => api.post('/leads', data),

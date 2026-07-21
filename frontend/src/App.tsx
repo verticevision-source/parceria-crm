@@ -11,6 +11,7 @@ import Users from './pages/Users'
 import WhatsAppConfig from './pages/WhatsAppConfig'
 import AdminWhatsApp from './pages/AdminWhatsApp'
 import AdminSellers from './pages/AdminSellers'
+import DisqualifiedLeads from './pages/DisqualifiedLeads'
 import Roulette from './pages/Roulette'
 import CRMBoards from './pages/CRMBoards'
 import BulkMessage from './pages/BulkMessage'
@@ -139,6 +140,15 @@ export default function App() {
           element={
             <AdminRoute>
               <AdminSellers />
+            </AdminRoute>
+          }
+        />
+
+        <Route
+          path="/leads-desqualificados"
+          element={
+            <AdminRoute>
+              <DisqualifiedLeads />
             </AdminRoute>
           }
         />

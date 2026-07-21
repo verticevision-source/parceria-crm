@@ -25,11 +25,12 @@ const noteSchema = z.object({ content: z.string().min(1) })
 
 export class LeadController {
   static async findAll(req: AuthRequest, res: Response): Promise<void> {
-    const { status, stageId, search } = req.query
+    const { status, stageId, search, source } = req.query
     const leads = await LeadService.findAll(req.user!.userId, req.user!.role, {
       status: status as string,
       stageId: stageId as string,
       search: search as string,
+      source: typeof source === 'string' ? source.split(',').map((s) => s.trim()).filter(Boolean) : undefined,
     })
     res.json({ success: true, data: leads })
   }

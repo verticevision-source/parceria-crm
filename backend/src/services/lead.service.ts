@@ -6,11 +6,13 @@ export class LeadService {
     status?: string
     stageId?: string
     search?: string
+    source?: string[]
   }) {
     const where: Record<string, unknown> = role === 'ADMIN' ? {} : { responsibleUserId: userId }
 
     if (filters?.status) where.status = filters.status as LeadStatus
     if (filters?.stageId) where.pipelineStageId = filters.stageId
+    if (filters?.source?.length) where.source = { in: filters.source }
     if (filters?.search) {
       where.contact = {
         OR: [
@@ -25,7 +27,7 @@ export class LeadService {
       include: {
         contact: { select: { id: true, name: true, phone: true, city: true } },
         pipelineStage: { select: { id: true, name: true, color: true, order: true } },
-        responsibleUser: { select: { id: true, name: true } },
+        responsibleUser: { select: { id: true, name: true, role: true } },
         _count: { select: { crmNotes: true, conversations: true } },
       },
       orderBy: { updatedAt: 'desc' },
