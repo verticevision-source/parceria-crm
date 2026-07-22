@@ -122,9 +122,10 @@ export class WhatsAppController {
   }
 
   /**
-   * POST /whatsapp/admin/route-to-vendor — atribui um lead a um vendedor e o
-   * vendedor "puxa" a conversa pelo NÚMERO DELE (aparece no WhatsApp dele +
-   * reengaja o cliente). Usado para recuperar leads (ex: rejeitados por engano).
+   * POST /whatsapp/admin/route-to-vendor — atribui um lead a um vendedor e
+   * AVISA o vendedor no WhatsApp DELE (pela frente) com o link do cliente, pra
+   * ele chamar pelo celular. Reatribuir no painel sozinho não notifica ninguém
+   * — este aviso é o que faz o lead "chegar" no WhatsApp do vendedor.
    */
   static async routeToVendor(req: AuthRequest, res: Response): Promise<void> {
     const { phone, vendorUserId, message } = req.body
@@ -144,13 +145,19 @@ export class WhatsAppController {
     await prisma.contact.update({ where: { id: contact.id }, data: { userId: vendorUserId } })
     await prisma.conversation.updateMany({ where: { contactId: contact.id }, data: { userId: vendorUserId } })
 
-    // vendedor puxa a conversa pelo número dele (se houver mensagem)
+    // SEMPRE avisa o vendedor no WhatsApp dele com o link pra chamar o cliente.
+    const leadName = contact.name && contact.name !== phone ? contact.name : 'Cliente'
+    const cityPart = contact.city ? `📍 ${contact.city}\n` : ''
+    const sellerMsg = `🔔 *Novo lead pra você!*\n\n👤 ${leadName}\n${cityPart}\n👉 Chame o cliente: https://wa.me/${phone}\n\n_Encaminhado pelo painel — chame pelo seu celular._`
+    const notified = await WhatsAppService.notifySeller(vendorUserId, sellerMsg).catch(() => false)
+
+    // (Opcional) 1ª msg pro CLIENTE pelo número do vendedor, se o admin escreveu uma.
     let sent = false
     if (message) {
       try { await WhatsAppService.sendMessage(vendorUserId, phone, message); sent = true }
-      catch (e: any) { res.status(409).json({ success: false, message: `Lead atribuído, mas o envio falhou: ${e?.message}` }); return }
+      catch (e: any) { res.status(409).json({ success: false, message: `Lead atribuído e vendedor avisado, mas a msg pro cliente falhou: ${e?.message}` }); return }
     }
-    res.json({ success: true, data: { assigned: true, sent } })
+    res.json({ success: true, data: { assigned: true, notified, sent } })
   }
 
   static async sendMedia(req: AuthRequest, res: Response): Promise<void> {
