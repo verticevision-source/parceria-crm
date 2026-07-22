@@ -856,9 +856,14 @@ export class WhatsAppService {
       let number = session.phoneNumber || ''
       if (!number) {
         // Campo em branco (bug de connect): resolve pela instância do Evolution
+        // e GRAVA de volta na sessão (auto-conserto — corrige tb a exibição na
+        // Central de Vendedores e evita reresolver a cada aviso).
         try {
           const st = await getWhatsAppProvider().getStatus(session.id)
           number = st.phoneNumber || ''
+          if (number) {
+            await prisma.whatsAppSession.update({ where: { id: session.id }, data: { phoneNumber: number } }).catch(() => {})
+          }
         } catch { /* segue sem número */ }
       }
       if (!number) {

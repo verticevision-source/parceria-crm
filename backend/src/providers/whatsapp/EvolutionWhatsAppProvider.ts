@@ -199,11 +199,19 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       if (state === 'open') status = 'CONNECTED'
       else if (state === 'connecting' || state === 'close') status = 'WAITING_QR'
 
-      return {
-        sessionId,
-        status,
-        phoneNumber: data?.instance?.jid?.split('@')[0],
+      // /connectionState NÃO traz o número (só o state). Se faltar e estiver
+      // conectado, resolve pelo ownerJid via /fetchInstances (senão o número
+      // fica em branco na sessão e quebra o notifySeller — caso da Stela).
+      let phoneNumber: string | undefined = data?.instance?.jid?.split('@')[0]
+      if (!phoneNumber && status === 'CONNECTED') {
+        try {
+          const list = await this.req<any[]>('GET', `/instance/fetchInstances?instanceName=${sessionId}`)
+          const inst = Array.isArray(list) ? (list.find((i) => i?.name === sessionId) || list[0]) : null
+          phoneNumber = inst?.ownerJid?.split('@')[0] || undefined
+        } catch { /* segue sem número */ }
       }
+
+      return { sessionId, status, phoneNumber }
     } catch {
       return { sessionId, status: 'DISCONNECTED' }
     }
