@@ -13,16 +13,28 @@ type Tab = 'profile' | 'security' | 'quickreplies' | 'pipeline' | 'customfields'
 
 // ─── AI Settings tab ──────────────────────────────────────────────────────────
 function AISettingsTab() {
-  const [cfg, setCfg] = useState({ provider: 'gemini', model: '', systemPrompt: '', enabled: false, hasApiKey: false })
+  const [cfg, setCfg] = useState({
+    provider: 'gemini', model: '', systemPrompt: '', enabled: false, hasApiKey: false,
+    botEnabled: false, botUserId: '', botPrompt: '', defaultBotPrompt: '',
+  })
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [agents, setAgents] = useState<{ id: string; name: string }[]>([])
+
+  // Teste do prompt sem tocar no WhatsApp
+  const [testText, setTestText] = useState('')
+  const [testReply, setTestReply] = useState('')
+  const [testing, setTesting] = useState(false)
 
   useEffect(() => {
     aiApi.getConfig()
-      .then((r) => setCfg(r.data.data))
+      .then((r) => setCfg({ ...r.data.data, botUserId: r.data.data.botUserId || '' }))
       .catch(() => toast.error('Erro ao carregar config de IA'))
       .finally(() => setLoading(false))
+    usersApi.findAll()
+      .then((r) => setAgents(r.data.data.filter((u: any) => u.isActive && u.role === 'USER')))
+      .catch(() => { /* silencioso */ })
   }, [])
 
   const save = async () => {
@@ -31,14 +43,27 @@ function AISettingsTab() {
       const payload: any = {
         provider: cfg.provider, model: cfg.model,
         systemPrompt: cfg.systemPrompt, enabled: cfg.enabled,
+        botEnabled: cfg.botEnabled, botUserId: cfg.botUserId || null, botPrompt: cfg.botPrompt,
       }
       if (apiKey.trim()) payload.apiKey = apiKey.trim()
       const r = await aiApi.updateConfig(payload)
-      setCfg(r.data.data)
+      setCfg((c) => ({ ...c, ...r.data.data, botUserId: r.data.data.botUserId || '' }))
       setApiKey('')
       toast.success('Configuração de IA salva!')
     } catch { toast.error('Erro ao salvar') }
     finally { setSaving(false) }
+  }
+
+  const runTest = async () => {
+    if (!testText.trim()) { toast.error('Escreva uma mensagem de teste'); return }
+    setTesting(true)
+    setTestReply('')
+    try {
+      const r = await aiApi.botPreview(testText.trim())
+      setTestReply(r.data.data.reply || '(resposta vazia)')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Erro ao testar — confira a chave de API e se a IA está ativada')
+    } finally { setTesting(false) }
   }
 
   if (loading) return <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-border border-t-primary rounded-full animate-spin" /></div>
@@ -97,6 +122,89 @@ function AISettingsTab() {
         <button onClick={save} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
           <Save size={15} /> {saving ? 'Salvando...' : 'Salvar Configuração'}
         </button>
+      </div>
+
+      {/* ── Atendente de IA: a IA como "mais um vendedor" na roleta ── */}
+      <div className="mt-8 pt-6 border-t border-border">
+        <div className="flex items-center gap-2 mb-1">
+          <Sparkles size={18} className="text-primary-light" />
+          <h3 className="text-text-primary font-bold">Atendente de IA</h3>
+        </div>
+        <p className="text-xs text-text-muted mb-4">
+          A IA entra na roleta como um vendedor. Quando um lead qualificado cair nela,
+          ela assume a conversa e atende o cliente sozinha pelo número dela.
+        </p>
+
+        <div className="space-y-4">
+          <div className="flex items-start gap-2 rounded-xl p-3"
+            style={{ background: 'rgba(239,68,68,.08)', border: '1px solid rgba(239,68,68,.25)' }}>
+            <span className="text-base leading-none">⚠️</span>
+            <p className="text-[11px] text-red-200/90 leading-relaxed">
+              A IA conversa com o cliente <b>sem revisão humana</b>. Teste o texto abaixo
+              antes de ativar. Pra parar na hora: desligue este botão, ou desligue a IA
+              de uma conversa específica no Atendimento.
+            </p>
+          </div>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <div onClick={() => setCfg({ ...cfg, botEnabled: !cfg.botEnabled })}
+              className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${cfg.botEnabled ? 'bg-primary' : 'bg-bg-tertiary border border-border'}`}>
+              <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${cfg.botEnabled ? 'translate-x-4' : 'translate-x-0.5'}`} />
+            </div>
+            <span className="text-text-secondary text-sm">Ativar atendimento automático da IA</span>
+          </label>
+
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">Qual atendente é a IA</label>
+            <select value={cfg.botUserId || ''} onChange={(e) => setCfg({ ...cfg, botUserId: e.target.value })} className="input-field">
+              <option value="">Nenhum — IA desligada</option>
+              {agents.map((a) => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+            <p className="text-xs text-text-muted mt-1">
+              Esse usuário precisa ter um número WhatsApp conectado e estar ativo na Roleta
+              com as cidades que ele atende.
+            </p>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-text-secondary">Instruções da IA (como ela deve atender)</label>
+              {cfg.defaultBotPrompt && (
+                <button type="button" onClick={() => setCfg({ ...cfg, botPrompt: cfg.defaultBotPrompt })}
+                  className="text-xs text-primary-light hover:underline">usar texto sugerido</button>
+              )}
+            </div>
+            <textarea value={cfg.botPrompt || ''} onChange={(e) => setCfg({ ...cfg, botPrompt: e.target.value })}
+              rows={14} className="input-field resize-none text-xs font-mono"
+              placeholder="Clique em 'usar texto sugerido' pra começar de um texto pronto e ajustar." />
+          </div>
+
+          <div className="rounded-xl p-3" style={{ background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.2)' }}>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              Testar resposta <span className="text-xs text-text-muted">(não envia nada no WhatsApp)</span>
+            </label>
+            <div className="flex gap-2">
+              <input value={testText} onChange={(e) => setTestText(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') runTest() }}
+                placeholder="Ex: qual a taxa de juros?" className="input-field flex-1" />
+              <button onClick={runTest} disabled={testing} className="btn-ghost border border-border text-sm px-3">
+                {testing ? '...' : 'Testar'}
+              </button>
+            </div>
+            {testReply && (
+              <div className="mt-3 p-3 rounded-lg text-sm text-text-primary whitespace-pre-wrap"
+                style={{ background: 'rgba(0,0,0,.25)' }}>
+                {testReply}
+              </div>
+            )}
+          </div>
+
+          <button onClick={save} disabled={saving} className="btn-primary flex items-center gap-2 text-sm">
+            <Save size={15} /> {saving ? 'Salvando...' : 'Salvar Atendente de IA'}
+          </button>
+        </div>
       </div>
     </div>
   )

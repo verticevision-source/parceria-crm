@@ -53,6 +53,7 @@ export const aiApi = {
   getConfig: () => api.get('/ai/config'),
   updateConfig: (data: object) => api.put('/ai/config', data),
   suggest: (conversationId: string) => api.post('/ai/suggest', { conversationId }),
+  botPreview: (text: string) => api.post('/ai/bot/preview', { text }),
 }
 
 // Números de WhatsApp (multi-número)

@@ -9,6 +9,7 @@ router.use(authMiddleware)
 
 router.get('/config', adminMiddleware, asyncHandler(AIController.getConfig))
 router.put('/config', adminMiddleware, asyncHandler(AIController.updateConfig))
+router.post('/bot/preview', adminMiddleware, asyncHandler(AIController.botPreview))
 router.post('/suggest', asyncHandler(AIController.suggest))
 
 export default router

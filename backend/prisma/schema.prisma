@@ -175,6 +175,7 @@ model Message {
   longitude         Float?
   externalMessageId String?
   sentAt            DateTime?
+  aiGenerated       Boolean          @default(false)  // escrita pelo atendente de IA
   createdAt         DateTime         @default(now())
 
   conversation    Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -618,6 +619,12 @@ model AIConfig {
   model        String?                       // ex: gpt-4o-mini, gemini-1.5-flash
   systemPrompt String?  @db.Text             // instruções do negócio para a IA
   enabled      Boolean  @default(false)
+  // ── Atendente de IA (a IA é "mais um vendedor" na roleta) ──────────────────
+  // botUserId = qual usuário É a IA. Null = nenhum (desligada). O número dela
+  // é derivado da WhatsAppSession desse usuário (mesmo padrão do notifySeller).
+  botEnabled   Boolean  @default(false)
+  botUserId    String?
+  botPrompt    String?  @db.Text             // prompt do atendimento automático
   updatedAt    DateTime @updatedAt @default(now())
 
   @@map("ai_config")

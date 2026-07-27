@@ -11,6 +11,9 @@ export interface AIConfigPublic {
   systemPrompt: string | null
   enabled: boolean
   hasApiKey: boolean
+  botEnabled: boolean
+  botUserId: string | null
+  botPrompt: string | null
 }
 
 export class AIService {
@@ -31,17 +34,25 @@ export class AIService {
       systemPrompt: cfg.systemPrompt,
       enabled: cfg.enabled,
       hasApiKey: !!cfg.apiKey,
+      botEnabled: cfg.botEnabled,
+      botUserId: cfg.botUserId,
+      botPrompt: cfg.botPrompt,
     }
   }
 
   static async updateConfig(data: {
     provider?: string; apiKey?: string; model?: string; systemPrompt?: string; enabled?: boolean
+    botEnabled?: boolean; botUserId?: string | null; botPrompt?: string
   }) {
     const update: any = {}
     if (data.provider) update.provider = data.provider
     if (data.model !== undefined) update.model = data.model
     if (data.systemPrompt !== undefined) update.systemPrompt = data.systemPrompt
     if (data.enabled !== undefined) update.enabled = data.enabled
+    if (data.botEnabled !== undefined) update.botEnabled = data.botEnabled
+    // botUserId aceita null explicitamente ("nenhum atendente de IA")
+    if (data.botUserId !== undefined) update.botUserId = data.botUserId || null
+    if (data.botPrompt !== undefined) update.botPrompt = data.botPrompt
     // Só atualiza a key se vier preenchida (evita apagar ao salvar form sem key)
     if (data.apiKey) update.apiKey = data.apiKey
 
@@ -57,12 +68,15 @@ export class AIService {
    * Gera uma resposta da IA com base no histórico da conversa.
    * `history`: lista de { role: 'customer' | 'agent', text } em ordem cronológica.
    */
-  static async generateReply(history: { role: 'customer' | 'agent'; text: string }[]): Promise<string> {
+  static async generateReply(
+    history: { role: 'customer' | 'agent'; text: string }[],
+    promptOverride?: string
+  ): Promise<string> {
     const cfg = await AIService.getConfig()
     if (!cfg.enabled) throw new Error('Assistente de IA está desativado. Ative nas Configurações.')
     if (!cfg.apiKey) throw new Error('Configure a chave de API da IA nas Configurações.')
 
-    const systemPrompt = cfg.systemPrompt?.trim() || DEFAULT_PROMPT
+    const systemPrompt = promptOverride?.trim() || cfg.systemPrompt?.trim() || DEFAULT_PROMPT
 
     if (cfg.provider === 'openai') {
       return AIService.callOpenAI(cfg.apiKey, cfg.model || 'gpt-4o-mini', systemPrompt, history)
@@ -71,17 +85,24 @@ export class AIService {
   }
 
   /** Monta o histórico de uma conversa e gera uma sugestão de resposta */
-  static async suggestForConversation(conversationId: string): Promise<string> {
+  static async suggestForConversation(
+    conversationId: string,
+    opts?: { limit?: number; promptOverride?: string }
+  ): Promise<string> {
+    // IMPORTANTE: busca as mensagens MAIS RECENTES (desc) e reordena.
+    // Antes era `asc + take`, que pegava as 20 mensagens mais ANTIGAS — numa
+    // conversa longa a IA respondia com o contexto congelado no início.
     const msgs = await prisma.message.findMany({
       where: { conversationId },
-      orderBy: { createdAt: 'asc' },
-      take: 20,
+      orderBy: { createdAt: 'desc' },
+      take: opts?.limit ?? 20,
     })
     const history = msgs
+      .reverse()
       .filter((m) => m.textBody?.trim())
       .map((m) => ({ role: (m.direction === 'IN' ? 'customer' : 'agent') as 'customer' | 'agent', text: m.textBody! }))
     if (history.length === 0) throw new Error('Sem mensagens de texto para gerar sugestão')
-    return AIService.generateReply(history)
+    return AIService.generateReply(history, opts?.promptOverride)
   }
 
   // ── OpenAI ────────────────────────────────────────────────────────────────

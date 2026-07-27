@@ -341,6 +341,26 @@ export class ChatFlowService {
         return
       }
 
+      // ── Atendente de IA ─────────────────────────────────────────────────────
+      // Se a roleta caiu no usuário-IA, marca a conversa pra IA assumir. O resto
+      // do fluxo segue igual (avisa o cliente + 1ª msg pelo número da IA); a
+      // partir da resposta do cliente, a IA conduz o atendimento sozinha.
+      if (vendorUserId) {
+        const { AIBotService } = await import('./aiBot.service')
+        if (await AIBotService.isBotUser(vendorUserId)) {
+          await prisma.conversation.updateMany({
+            where: { contactId: session.contactId },
+            data: { aiAuto: true },
+          }).catch(() => {})
+          if (leadId) {
+            await prisma.cRMNote.create({
+              data: { leadId, userId, content: `🤖 Lead qualificado — atendimento automático pela IA (${vendorName || 'IA'})\nCidade: ${cityDisplay}\nModalidade: ${modalityLabel}` },
+            }).catch(() => {})
+          }
+          logger.info(`[IA-bot] Conversa do contato ${session.contactId} marcada p/ atendimento da IA`)
+        }
+      }
+
       // ── Vendedor de "chip frágil" (aborda pelo CELULAR) ─────────────────────
       // Alguns chips têm restrição de dispositivo vinculado: a 1ª msg fria pela
       // API não entrega (fica PENDING), mas o que o vendedor digita no celular

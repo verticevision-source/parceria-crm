@@ -1,5 +1,6 @@
 import { Response } from 'express'
 import { AIService } from '../services/ai.service'
+import { AIBotService } from '../services/aiBot.service'
 import { prisma } from '../config/database'
 import { AuthRequest } from '../types'
 
@@ -7,12 +8,24 @@ export class AIController {
   // Admin: configuração
   static async getConfig(_req: AuthRequest, res: Response) {
     const data = await AIService.getConfigPublic()
-    res.json({ success: true, data })
+    res.json({ success: true, data: { ...data, defaultBotPrompt: AIBotService.defaultPrompt() } })
   }
 
   static async updateConfig(req: AuthRequest, res: Response) {
     const data = await AIService.updateConfig(req.body)
+    AIBotService.clearCache()  // config é cacheada 30s no robô — invalida já
     res.json({ success: true, data })
+  }
+
+  /**
+   * POST /api/ai/bot/preview — testa o prompt do atendente de IA SEM tocar no
+   * WhatsApp. É o que permite afinar o texto antes de expor a cliente real.
+   */
+  static async botPreview(req: AuthRequest, res: Response) {
+    const { text } = req.body
+    if (!text?.trim()) { res.status(400).json({ success: false, message: 'text obrigatório' }); return }
+    const reply = await AIBotService.previewReply(text.trim())
+    res.json({ success: true, data: { reply } })
   }
 
   // Atendente com acesso: sugerir resposta

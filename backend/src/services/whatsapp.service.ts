@@ -236,9 +236,9 @@ function setupMessageListener(): void {
         logger.error('[WhatsAppService] Erro no retorno de remarketing:', e)
       )
 
-      // ── IA: resposta automática (somente se o bot não assumiu) ──
+      // ── IA: resposta automática (somente se o bot de fluxo não assumiu) ──
       if (!botHandled && conversation.aiAuto && message.type === 'TEXT') {
-        handleAiAutoReply(conversation.id, ownerId, contact.phone).catch((e) =>
+        handleAiAutoReply(conversation, session, contact.phone).catch((e) =>
           logger.error('[WhatsAppService] Erro na resposta automática de IA:', e)
         )
       }
@@ -412,19 +412,36 @@ async function handleRemarketingReply(contactId: string, phone: string): Promise
 }
 
 /**
- * Resposta automática da IA: gera uma resposta com base no histórico e envia.
+ * Resposta automática da IA. O envio real acontece no AIBotService (debounce +
+ * tetos + guarda anti-corrida); aqui só decidimos SE esta mensagem, neste
+ * número, deve acionar a IA.
+ *
+ * GUARDA DE NÚMERO: a conversa pertence a quem a roleta atribuiu, e esse dono
+ * NÃO é reatribuído ao dono do número. Se o cliente responder na frente (ou em
+ * qualquer outro número), a IA não pode falar por lá — ela só responde pelo
+ * número dela.
  */
-async function handleAiAutoReply(conversationId: string, userId: string, phone: string): Promise<void> {
+async function handleAiAutoReply(
+  conversation: { id: string; userId: string },
+  session: { id: string; userId: string },
+  phone: string
+): Promise<void> {
   try {
-    const { AIService } = await import('./ai.service')
-    const reply = await AIService.suggestForConversation(conversationId)
-    if (!reply?.trim()) return
-    // Pequeno atraso para parecer mais natural
-    await new Promise((r) => setTimeout(r, 1500))
-    await WhatsAppService.sendMessage(userId, phone, reply)
-    logger.info(`[IA] Resposta automática enviada para ${phone}`)
+    const { AIBotService } = await import('./aiBot.service')
+    const botUserId = await AIBotService.botUserId()
+
+    // Lead atribuído ao atendente de IA: só responde pelo número DELE.
+    // (Se o cliente responder na frente, quem atende é humano — a IA fica calada.)
+    if (botUserId && conversation.userId === botUserId) {
+      if (session.userId !== botUserId) return
+      if (!(await AIBotService.isBotUser(botUserId))) return
+    }
+
+    // Debounce, tetos e guarda anti-corrida ficam no AIBotService; ele responde
+    // pela sessão que recebeu a mensagem.
+    AIBotService.schedule(conversation.id, session.id, phone)
   } catch (e: any) {
-    logger.warn(`[IA] Falha na resposta automática: ${e.message}`)
+    logger.warn(`[IA] Falha ao agendar resposta automática: ${e.message}`)
   }
 }
 
@@ -729,23 +746,47 @@ export class WhatsAppService {
   }
 
   static async sendMessage(userId: string, to: string, body: string) {
-    // Prefere a sessão do próprio usuário; se não tiver, usa qualquer número
-    // conectado (modelo de número compartilhado da Cloud API oficial)
-    let session = await prisma.whatsAppSession.findFirst({
-      where: { userId, status: 'CONNECTED' },
-      orderBy: { createdAt: 'desc' },  // prefere a sessão reconectada mais recente
-    })
+    // Prefere a sessão reconectada mais recente do próprio usuário.
     // NUNCA cair para "qualquer número conectado": isso já fez o robô enviar
     // pelo número de outro vendedor quando o número da frente caiu — expondo o
     // número dele a contato frio (risco de ban). Melhor falhar alto.
+    const session = await prisma.whatsAppSession.findFirst({
+      where: { userId, status: 'CONNECTED' },
+      orderBy: { createdAt: 'desc' },
+    })
     if (!session) throw new Error('Nenhuma sessão conectada encontrada para este usuário')
 
-    if (!session) throw new Error('Nenhuma sessão conectada encontrada')
+    return WhatsAppService.deliver(session, userId, to, body)
+  }
 
+  /**
+   * Envia por uma SESSÃO (número) específica, em vez de "a sessão do usuário X".
+   * Use quando o número importa: o atendente de IA só pode falar pelo número
+   * DELE — a conversa pode pertencer a outro usuário (a roleta não reatribui o
+   * `userId` da conversa), então resolver por usuário mandaria pelo número errado.
+   */
+  static async sendFromSession(
+    sessionId: string, to: string, body: string, opts?: { aiGenerated?: boolean }
+  ) {
+    const session = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
+    if (!session) throw new Error('Sessão não encontrada')
+    if (session.status !== 'CONNECTED') throw new Error('Sessão não está conectada')
+
+    return WhatsAppService.deliver(session, session.userId, to, body, opts)
+  }
+
+  /** Corpo comum do envio, já com a sessão resolvida. */
+  private static async deliver(
+    session: { id: string },
+    ownerUserId: string,
+    to: string,
+    body: string,
+    opts?: { aiGenerated?: boolean }
+  ) {
     const phone = normalizePhone(to)
     let contact = await findContactGlobal(phone)
     if (!contact) {
-      contact = await prisma.contact.create({ data: { userId, name: phone, phone } })
+      contact = await prisma.contact.create({ data: { userId: ownerUserId, name: phone, phone } })
     }
 
     let conversation = await prisma.conversation.findFirst({
@@ -756,7 +797,7 @@ export class WhatsAppService {
     if (!conversation) {
       conversation = await prisma.conversation.create({
         data: {
-          userId,
+          userId: ownerUserId,
           whatsappSessionId: session.id,
           contactId: contact.id,
           status: 'OPEN',
@@ -775,7 +816,7 @@ export class WhatsAppService {
     const message = await prisma.message.create({
       data: {
         conversationId: conversation.id,
-        userId,
+        userId: ownerUserId,
         whatsappSessionId: session.id,
         contactId: contact.id,
         direction: 'OUT',
@@ -783,6 +824,7 @@ export class WhatsAppService {
         textBody: body,
         externalMessageId: result.externalId,
         sentAt: result.sentAt,
+        aiGenerated: opts?.aiGenerated === true,
       },
     })
 
@@ -792,7 +834,7 @@ export class WhatsAppService {
     })
 
     if (io) {
-      io.to(`user:${userId}`).to('admins').emit('new-message', { message, conversation, contact })
+      io.to(`user:${ownerUserId}`).to('admins').emit('new-message', { message, conversation, contact })
     }
 
     return message
