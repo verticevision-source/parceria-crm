@@ -81,7 +81,8 @@ export class AIService {
     if (cfg.provider === 'openai') {
       return AIService.callOpenAI(cfg.apiKey, cfg.model || 'gpt-4o-mini', systemPrompt, history)
     }
-    return AIService.callGemini(cfg.apiKey, cfg.model || 'gemini-1.5-flash', systemPrompt, history)
+    // gemini-1.5-flash foi aposentado pelo Google (chave nova recebe 404).
+    return AIService.callGemini(cfg.apiKey, cfg.model || 'gemini-flash-latest', systemPrompt, history)
   }
 
   /** Monta o histórico de uma conversa e gera uma sugestão de resposta */
@@ -149,12 +150,22 @@ export class AIService {
       body: JSON.stringify({
         systemInstruction: { parts: [{ text: systemPrompt }] },
         contents,
-        generationConfig: { temperature: 0.7, maxOutputTokens: 300 },
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 600,
+          // Os modelos novos (2.5+) "pensam" antes de responder e esse raciocínio
+          // CONSOME a cota de saída: com thinking ligado a resposta vinha cortada
+          // no meio, e às vezes vazava o raciocínio em inglês ("Let's review the
+          // prompt's..."). Aqui a resposta é curta por definição — não precisa.
+          thinkingConfig: { thinkingBudget: 0 },
+        },
       }),
     })
     if (!res.ok) {
       const err = await res.text().catch(() => '')
-      logger.error('[AI/Gemini] erro:', err)
+      // Loga o corpo do erro no texto da mensagem: como 2º argumento o winston
+      // costuma engolir, e sem ele não dá pra saber se é chave, cota ou modelo.
+      logger.error(`[AI/Gemini] erro ${res.status}: ${err.slice(0, 400)}`)
       throw new Error('Falha ao gerar resposta (Gemini). Verifique a chave de API.')
     }
     const data = await res.json() as any
