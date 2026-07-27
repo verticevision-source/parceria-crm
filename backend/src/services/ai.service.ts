@@ -144,23 +144,33 @@ export class AIService {
     }))
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`
-    const res = await fetch(url, {
+
+    // Os modelos novos (2.5+) "pensam" antes de responder e esse raciocínio
+    // CONSOME a cota de saída: com pouco teto a resposta vinha cortada no meio e
+    // às vezes vazava o raciocínio em inglês ("Let's review the prompt's...").
+    // Duas defesas: (1) teto FOLGADO, que sozinho já resolve; (2) desligar o
+    // thinking quando o modelo aceitar — nem todos aceitam, e quem não aceita
+    // devolve 400 "invalid argument", então esse é opcional e tem fallback.
+    const base: any = {
+      systemInstruction: { parts: [{ text: systemPrompt }] },
+      contents,
+      generationConfig: { temperature: 0.7, maxOutputTokens: 2000 },
+    }
+    const post = (body: any) => fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: systemPrompt }] },
-        contents,
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 600,
-          // Os modelos novos (2.5+) "pensam" antes de responder e esse raciocínio
-          // CONSOME a cota de saída: com thinking ligado a resposta vinha cortada
-          // no meio, e às vezes vazava o raciocínio em inglês ("Let's review the
-          // prompt's..."). Aqui a resposta é curta por definição — não precisa.
-          thinkingConfig: { thinkingBudget: 0 },
-        },
-      }),
+      body: JSON.stringify(body),
     })
+
+    let res = await post({
+      ...base,
+      generationConfig: { ...base.generationConfig, thinkingConfig: { thinkingBudget: 0 } },
+    })
+    if (res.status === 400) {
+      // Modelo não suporta thinkingConfig — refaz sem ele (o teto folgado cobre).
+      res = await post(base)
+    }
+
     if (!res.ok) {
       const err = await res.text().catch(() => '')
       // Loga o corpo do erro no texto da mensagem: como 2º argumento o winston
