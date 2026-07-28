@@ -29,14 +29,20 @@ export class ChatFlowService {
   }
   /**
    * O fluxo ativo pode INICIAR neste número?
-   * - Se o fluxo está amarrado a um número (whatsappSessionId), só roda nele.
+   * - Amarrado a número(s) (whatsappSessionId): só roda neles. Aceita VÁRIOS
+   *   separados por vírgula — um anúncio apontado pro número errado por engano
+   *   fazia o cliente cair direto num vendedor, pulando a qualificação inteira
+   *   (sem cidade, sem roleta: Brasília foi parar em quem só atende Piracicaba).
+   *   Listar os números que recebem anúncio faz o robô qualificar em todos.
    * - Sem amarração, mantém o comportamento antigo: só em números de ADMIN.
    */
   static async canStartOnSession(sessionId: string, ownerUserId: string): Promise<boolean> {
     const flow = await ChatFlowService.getActiveFlow()
     if (!flow) return false
     const bound = (flow as any).whatsappSessionId as string | null
-    if (bound) return bound === sessionId
+    if (bound) {
+      return bound.split(',').map((s) => s.trim()).filter(Boolean).includes(sessionId)
+    }
     const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
     return owner?.role === 'ADMIN'
   }

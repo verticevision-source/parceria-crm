@@ -39,7 +39,10 @@ router.post('/start-for-conversation', asyncHandler(async (req, res) => {
   // dono da conversa (que pode ser um vendedor, após redistribuição/timeout).
   let senderUserId = conv.userId
   const flow = await ChatFlowService.getActiveFlow()
-  const boundSessionId = (flow as any)?.whatsappSessionId as string | null
+  const boundRaw = (flow as any)?.whatsappSessionId as string | null
+  // Pode haver VÁRIOS números amarrados (separados por vírgula). No reinício
+  // manual usa o primeiro — o número principal da campanha.
+  const boundSessionId = boundRaw?.split(',').map((s) => s.trim()).filter(Boolean)[0] || null
   if (boundSessionId) {
     const bound = await prisma.whatsAppSession.findUnique({ where: { id: boundSessionId }, select: { userId: true, status: true } })
     if (!bound || bound.status !== 'CONNECTED') {
