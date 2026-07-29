@@ -125,12 +125,22 @@ function setupMessageListener(): void {
         }
       }
 
-      // Foto de perfil do WhatsApp — preenche se o contato ainda não tem (1ª vez)
-      if (!contact.avatarUrl && typeof (provider as any).getProfilePicUrl === 'function') {
+      // Foto de perfil do WhatsApp — busca quando nunca tentou ou a última
+      // tentativa tem mais de 7 dias (pega troca de foto). `avatarUpdatedAt`
+      // registra a TENTATIVA (mesmo sem retorno): contato com foto privada não
+      // pode ser re-tentado a cada mensagem.
+      const AVATAR_TTL_MS = 7 * 24 * 60 * 60 * 1000
+      const avatarStale = !contact.avatarUpdatedAt || (Date.now() - contact.avatarUpdatedAt.getTime()) > AVATAR_TTL_MS
+      if ((!contact.avatarUrl || avatarStale) && typeof (provider as any).getProfilePicUrl === 'function') {
         try {
           const pic = await (provider as any).getProfilePicUrl(session.id, contact.phone)
-          if (pic) contact = await prisma.contact.update({ where: { id: contact.id }, data: { avatarUrl: pic } })
-        } catch { /* ignora falha de foto */ }
+          contact = await prisma.contact.update({
+            where: { id: contact.id },
+            data: { avatarUpdatedAt: new Date(), ...(pic ? { avatarUrl: pic } : {}) },
+          })
+        } catch (e: any) {
+          logger.debug(`[WhatsAppService] Foto de perfil falhou p/ ${contact.phone}: ${e?.message}`)
+        }
       }
 
       // Conversa única por contato

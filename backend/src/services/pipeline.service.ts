@@ -36,7 +36,7 @@ export class PipelineService {
     const leads = await prisma.lead.findMany({
       where: { ...whereUser, status: 'OPEN' },
       include: {
-        contact: { select: { id: true, name: true, phone: true } },
+        contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
         responsibleUser: { select: { id: true, name: true } },
         pipelineStage: { select: { id: true, name: true, color: true } },
       },

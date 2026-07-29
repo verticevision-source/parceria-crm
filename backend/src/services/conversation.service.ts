@@ -9,6 +9,11 @@ export class ConversationService {
 
     if (filters?.status) {
       where.status = filters.status as ConversationStatus
+    } else {
+      // Sem filtro = "Ativas": arquivadas (CLOSED) só aparecem pedindo
+      // explicitamente ?status=CLOSED (aba Arquivadas). Se o cliente escrever
+      // de novo, o inbound força OPEN e a conversa volta pra cá sozinha.
+      where.status = { not: 'CLOSED' satisfies ConversationStatus }
     }
 
     return prisma.conversation.findMany({

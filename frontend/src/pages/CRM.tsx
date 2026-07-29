@@ -7,6 +7,7 @@ import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Lead, PipelineStage, Contact, KanbanColumn, Message } from '../types'
 import Modal from '../components/UI/Modal'
+import Avatar from '../components/UI/Avatar'
 import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import { format } from 'date-fns'
@@ -45,9 +46,12 @@ function LeadCard({ lead, index, onDelete, onOpenChat }: {
             </span>
           )}
           <div className="flex items-start justify-between gap-2 mb-2">
-            <h4 className="text-text-primary text-sm font-medium leading-tight">
-              {lead.contact?.name || 'Sem nome'}
-            </h4>
+            <div className="flex items-center gap-2 min-w-0">
+              <Avatar src={lead.contact?.avatarUrl} name={lead.contact?.name} size={24} />
+              <h4 className="text-text-primary text-sm font-medium leading-tight truncate">
+                {lead.contact?.name || 'Sem nome'}
+              </h4>
+            </div>
             <div className="flex items-center gap-1 flex-shrink-0">
               <StatusBadge status={lead.status} />
               <button
@@ -109,7 +113,7 @@ function KanbanCol({
   onOpenChat: (lead: LeadWithChat) => void
 }) {
   return (
-    <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border w-64 flex-shrink-0">
+    <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border w-[85vw] max-w-[280px] sm:w-64 flex-shrink-0 snap-start">
       <div className="p-4 border-b border-border">
         <div className="flex items-center gap-2">
           <div className="w-3 h-3 rounded-full" style={{ backgroundColor: column.color }} />
@@ -453,7 +457,7 @@ export default function CRM() {
           )}
         </div>
       ) : (
-        <div className="flex-1 overflow-x-auto p-6">
+        <div className="flex-1 overflow-x-auto p-4 sm:p-6 snap-x snap-mandatory sm:snap-none">
           <DragDropContext onDragEnd={onDragEnd}>
             <div className="flex gap-4 h-full">
               {filteredColumns.map((col) => (

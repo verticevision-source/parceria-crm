@@ -25,7 +25,7 @@ export class LeadService {
     return prisma.lead.findMany({
       where,
       include: {
-        contact: { select: { id: true, name: true, phone: true, city: true } },
+        contact: { select: { id: true, name: true, phone: true, city: true, avatarUrl: true } },
         pipelineStage: { select: { id: true, name: true, color: true, order: true } },
         responsibleUser: { select: { id: true, name: true, role: true } },
         _count: { select: { crmNotes: true, conversations: true } },

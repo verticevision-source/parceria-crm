@@ -121,6 +121,9 @@ model Contact {
   documentNumber String?
   notes          String?  @db.Text
   avatarUrl      String?  @db.Text
+  // Última TENTATIVA de buscar a foto (mesmo sem retorno) — janela de refresh
+  // de 7 dias sem martelar a Evolution a cada mensagem.
+  avatarUpdatedAt DateTime?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

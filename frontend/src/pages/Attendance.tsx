@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
-  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText
+  Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText,
+  Archive, ArchiveRestore
 } from 'lucide-react'
 import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi } from '../services/api'
 import { getSocket } from '../services/socket'
@@ -589,11 +590,21 @@ export default function Attendance() {
     if (!selected) return
     try {
       await conversationsApi.updateStatus(selected.id, status)
-      setSelected((prev) => prev ? { ...prev, status: status as Conversation['status'] } : null)
-      setConversations((prev) =>
-        prev.map((c) => (c.id === selected.id ? { ...c, status: status as Conversation['status'] } : c))
-      )
-      toast.success('Status atualizado')
+      // Se a conversa saiu do escopo da aba atual (arquivou vendo Ativas, ou
+      // desarquivou vendo Arquivadas), tira da lista e fecha o chat.
+      const leftCurrentTab =
+        (status === 'CLOSED' && filter !== 'CLOSED') ||
+        (status !== 'CLOSED' && filter === 'CLOSED')
+      if (leftCurrentTab) {
+        setConversations((prev) => prev.filter((c) => c.id !== selected.id))
+        setSelected(null)
+      } else {
+        setSelected((prev) => prev ? { ...prev, status: status as Conversation['status'] } : null)
+        setConversations((prev) =>
+          prev.map((c) => (c.id === selected.id ? { ...c, status: status as Conversation['status'] } : c))
+        )
+      }
+      toast.success(status === 'CLOSED' ? 'Conversa arquivada' : 'Status atualizado')
     } catch {
       toast.error('Erro ao atualizar status')
     }
@@ -776,7 +787,7 @@ export default function Attendance() {
                     : 'bg-bg-tertiary text-text-muted hover:text-text-primary'
                 }`}
               >
-                {s === '' ? 'Todas' : s === 'OPEN' ? 'Abertas' : s === 'PENDING' ? 'Pend.' : 'Fechadas'}
+                {s === '' ? 'Ativas' : s === 'OPEN' ? 'Abertas' : s === 'PENDING' ? 'Pend.' : 'Arquivadas'}
               </button>
             ))}
           </div>
@@ -873,10 +884,17 @@ export default function Attendance() {
                     className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-warning transition-colors">
                     <Clock size={16} />
                   </button>
-                  <button onClick={() => updateStatus('CLOSED')} title="Fechar"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-danger transition-colors">
-                    <X size={16} />
-                  </button>
+                  {selected.status === 'CLOSED' ? (
+                    <button onClick={() => updateStatus('OPEN')} title="Desarquivar"
+                      className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-success transition-colors">
+                      <ArchiveRestore size={16} />
+                    </button>
+                  ) : (
+                    <button onClick={() => updateStatus('CLOSED')} title="Arquivar conversa"
+                      className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-danger transition-colors">
+                      <Archive size={16} />
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -905,13 +923,13 @@ export default function Attendance() {
                     <div className={msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'}>
                       {/* Audio */}
                       {msg.type === 'AUDIO' && msg.mediaUrl && (
-                        <div className="flex items-center gap-2 min-w-[200px]">
+                        <div className="flex items-center gap-2 min-w-0 w-[min(220px,60vw)]">
                           <Volume2 size={16} className="flex-shrink-0 opacity-70" />
                           <audio
                             controls
                             preload="metadata"
                             src={mediaSrc(msg.mediaUrl)}
-                            className="h-8 max-w-[220px]"
+                            className="h-8 w-full min-w-0"
                             style={{ filter: msg.direction === 'OUT' ? 'invert(1)' : 'none', opacity: 0.9 }}
                             onError={() => toast.error('Não foi possível carregar o áudio')}
                           />

@@ -5,6 +5,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 import toast from 'react-hot-toast'
 import Modal from '../components/UI/Modal'
+import Avatar from '../components/UI/Avatar'
 import Badge from '../components/UI/Badge'
 import { UserX, Loader2, MapPin, ArrowRightLeft } from 'lucide-react'
 
@@ -22,7 +23,7 @@ interface DisqualifiedLead {
   source?: string
   notes?: string
   createdAt: string
-  contact?: { id: string; name: string; phone: string; city?: string }
+  contact?: { id: string; name: string; phone: string; city?: string; avatarUrl?: string | null }
   responsibleUser?: { id: string; name: string; role?: 'ADMIN' | 'USER' }
 }
 
@@ -120,6 +121,7 @@ export default function DisqualifiedLeads() {
               <div key={lead.id} className="card p-4 flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
+                    <Avatar src={lead.contact?.avatarUrl} name={lead.contact?.name} size={28} />
                     <p className="font-semibold text-text-primary">{lead.contact?.name || lead.contact?.phone}</p>
                     <Badge variant={reason.variant}>{reason.label}</Badge>
                   </div>
