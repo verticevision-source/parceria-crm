@@ -145,13 +145,39 @@ export class InternalChatService {
   // ── Supervisão: conversas de WhatsApp de um agente (admin) ───────────────────
 
   static async getAgentConversations(agentUserId: string) {
-    return prisma.conversation.findMany({
+    const convs = await prisma.conversation.findMany({
       where: { userId: agentUserId },
       orderBy: { lastMessageAt: 'desc' },
       take: 100,
       include: {
-        contact: { select: { id: true, name: true, phone: true } },
+        contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
+        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true } },
       },
+    })
+
+    // Mesmo semáforo do Atendimento: o supervisor tem que ver o vermelho sem
+    // precisar entrar em cada conversa.
+    const { aiSignal } = await import('./conversation.service')
+    const comLink = new Set(
+      (
+        await prisma.message.findMany({
+          where: {
+            conversationId: { in: convs.map((c) => c.id) },
+            direction: 'OUT',
+            textBody: { contains: '/novo-cadastro/' },
+          },
+          select: { conversationId: true },
+          distinct: ['conversationId'],
+        })
+      ).map((m) => m.conversationId)
+    )
+
+    return convs.map((c) => {
+      const { messages, ...rest } = c
+      return {
+        ...rest,
+        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]?.direction),
+      }
     })
   }
 

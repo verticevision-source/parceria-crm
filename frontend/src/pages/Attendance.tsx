@@ -63,6 +63,14 @@ function formatRecordingTime(seconds: number): string {
 
 // ─────────────────────────────────────────────
 // ConversationItem
+// Semáforo do atendimento da IA. Cor + texto: cor sozinha não serve pra quem
+// não distingue vermelho de verde, e é o sinal mais importante da tela.
+const SINAIS_IA: Record<string, { cor: string; rotulo: string; texto: string }> = {
+  vermelho: { cor: '#ef4444', rotulo: 'Precisa de você', texto: 'A IA não soube responder e passou pra equipe' },
+  amarelo:  { cor: '#eab308', rotulo: 'Sem resposta',    texto: 'O cliente não responde há mais de 1 hora' },
+  verde:    { cor: '#22c55e', rotulo: 'Ficha enviada',   texto: 'O link da ficha de cadastro já foi enviado' },
+}
+
 // ─────────────────────────────────────────────
 function ConversationItem({
   conversation,
@@ -78,12 +86,17 @@ function ConversationItem({
     ? Math.floor((Date.now() - new Date(conversation.lastMessageAt).getTime()) / 60000)
     : 0
   const isStalled = waitingMin >= 15
+  const sinal = SINAIS_IA[conversation.aiSignal || '']
   return (
     <button
       onClick={onClick}
+      // Barra de cor na borda esquerda: lida de longe e não rouba espaço no
+      // celular, ao contrário de mais um selo no meio do texto.
+      style={sinal ? { borderLeft: `4px solid ${sinal.cor}` } : undefined}
       className={`w-full text-left p-4 flex items-start gap-3 transition-all duration-200 border-b border-border/50 ${
         isSelected ? 'bg-primary/10' : 'hover:bg-bg-hover'
       }`}
+      title={sinal?.texto}
     >
       <div className="relative flex-shrink-0">
         <Avatar src={conversation.contact?.avatarUrl} name={conversation.contact?.name} size={44} />
@@ -106,6 +119,12 @@ function ConversationItem({
           {conversation.lastMessage || 'Sem mensagens'}
         </p>
         <div className="mt-1.5 flex items-center gap-1 flex-wrap">
+          {sinal && (
+            <span className="px-1.5 py-0.5 rounded text-[10px] font-bold"
+              style={{ background: sinal.cor + '22', color: sinal.cor, border: `1px solid ${sinal.cor}66` }}>
+              {sinal.rotulo}
+            </span>
+          )}
           <StatusBadge status={conversation.status} />
           {isStalled && (
             <span className="px-1.5 py-0.5 rounded text-[10px] font-bold flex items-center gap-0.5 bg-danger/15 text-danger border border-danger/40 animate-pulse">

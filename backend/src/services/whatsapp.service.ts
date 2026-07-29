@@ -879,6 +879,9 @@ export class WhatsAppService {
         lastMessage: body,
         lastMessageAt: result.sentAt,
         ...(pausarIA ? { aiPaused: true } : {}),
+        // Humano respondeu: apaga o vermelho. Sem isso o sinal ficaria aceso
+        // pra sempre e a tela viraria um mar de alertas ignorados.
+        ...(opts?.aiGenerated !== true ? { aiNeedsHuman: false } : {}),
       },
     })
     if (pausarIA) {

@@ -1,6 +1,36 @@
 import { ConversationStatus } from '@prisma/client'
 import { prisma } from '../config/database'
 
+/** Quanto tempo sem o cliente responder já é "esfriando". */
+const SEM_RESPOSTA_MS = 60 * 60 * 1000
+
+export type AISignal = 'vermelho' | 'amarelo' | 'verde' | null
+
+/**
+ * Semáforo do atendimento automático:
+ *   🔴 vermelho — a IA não soube e jogou pra equipe (ou bateu no teto). Tem
+ *      cliente esperando gente de verdade. Sempre ganha das outras cores.
+ *   🟡 amarelo  — falamos por último e o cliente não responde há 1h+.
+ *   🟢 verde    — a ficha de cadastro já foi enviada (objetivo cumprido).
+ *
+ * Vermelho e amarelo vêm antes do verde de propósito: a cor existe pra puxar
+ * atenção pro que precisa de ação, não pra comemorar o que já deu certo.
+ */
+export function aiSignal(
+  conv: { aiAuto: boolean; aiNeedsHuman: boolean; linkEnviado?: boolean; lastMessageAt: Date | null },
+  ultimaDirecao?: 'IN' | 'OUT'
+): AISignal {
+  if (!conv.aiAuto) return null
+  if (conv.aiNeedsHuman) return 'vermelho'
+  const parada =
+    ultimaDirecao === 'OUT' &&
+    conv.lastMessageAt != null &&
+    Date.now() - conv.lastMessageAt.getTime() > SEM_RESPOSTA_MS
+  if (parada) return 'amarelo'
+  if (conv.linkEnviado) return 'verde'
+  return null
+}
+
 export class ConversationService {
   static async findAll(userId: string, _role: string, filters?: { status?: string }) {
     // Cada usuário (inclusive admin) vê apenas as próprias conversas no Atendimento.
@@ -16,7 +46,7 @@ export class ConversationService {
       where.status = { not: 'CLOSED' satisfies ConversationStatus }
     }
 
-    return prisma.conversation.findMany({
+    const convs = await prisma.conversation.findMany({
       where,
       include: {
         contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
@@ -24,8 +54,36 @@ export class ConversationService {
         whatsappSession: { select: { id: true, phoneNumber: true, status: true } },
         tags: { include: { tag: true } },
         _count: { select: { messages: true } },
+        // Direção da última mensagem: é o que diz se estamos esperando o
+        // cliente (amarelo) ou o cliente esperando a gente.
+        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true } },
       },
       orderBy: { lastMessageAt: 'desc' },
+    })
+
+    // Quem já recebeu a ficha de cadastro. Uma consulta pra lista toda, em vez
+    // de uma por conversa. Casa pelo caminho do link (/novo-cadastro/) e não
+    // pelo token, senão trocar o link de um vendedor apagaria o histórico verde.
+    const comLink = new Set(
+      (
+        await prisma.message.findMany({
+          where: {
+            conversationId: { in: convs.map((c) => c.id) },
+            direction: 'OUT',
+            textBody: { contains: '/novo-cadastro/' },
+          },
+          select: { conversationId: true },
+          distinct: ['conversationId'],
+        })
+      ).map((m) => m.conversationId)
+    )
+
+    return convs.map((c) => {
+      const { messages, ...rest } = c
+      return {
+        ...rest,
+        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]?.direction),
+      }
     })
   }
 

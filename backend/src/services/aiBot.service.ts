@@ -197,6 +197,7 @@ export class AIBotService {
         where: { id: conversationId },
         data: { aiAuto: false },
       }).catch(() => {})
+      await AIBotService.marcarPrecisaHumano(conversationId, `teto de ${MAX_PER_CONVERSATION} respostas`)
       logger.warn(`[IA-bot] Teto por conversa atingido (${used}/${MAX_PER_CONVERSATION}) — IA desligada em conv=${conversationId}`)
       await WhatsAppService.notifyAdmin(
         `🤖 A IA atingiu o limite de ${MAX_PER_CONVERSATION} respostas com o cliente ${phone} e parou.\nA conversa está no painel aguardando alguém assumir.`,
@@ -241,6 +242,13 @@ export class AIBotService {
     // por usuário, senão sairia pelo número do vendedor dono da conversa.
     await WhatsAppService.sendFromSession(sessionId, phone, reply, { aiGenerated: true })
 
+    // A própria IA acabou de dizer que vai passar pra equipe: acende o vermelho.
+    // Detectar pelo texto dela é confiável porque o PROMPT manda usar frases
+    // fixas nesse caso — não é adivinhação sobre texto livre do cliente.
+    if (AIBotService.pediuHumano(reply)) {
+      await AIBotService.marcarPrecisaHumano(conversationId, 'a IA passou o atendimento pra equipe')
+    }
+
     logger.info(
       `[IA-bot] conv=${conversationId} replies=${used + 1}/${MAX_PER_CONVERSATION} dia=${today + 1}/${MAX_PER_DAY} chars=${reply.length} ms=${Date.now() - started}`
     )
@@ -263,6 +271,49 @@ export class AIBotService {
   /** Texto sugerido pro painel (botão "usar texto sugerido"). */
   static defaultPrompt(): string {
     return DEFAULT_BOT_PROMPT
+  }
+
+  /**
+   * A IA está dizendo "não sei, vou passar pra equipe"? O prompt manda usar
+   * frases fixas nesse caso; aqui aceitamos algumas variações porque o modelo
+   * reescreve um pouco. Falso positivo custa um vermelho a mais (alguém olha e
+   * segue); falso negativo custa um cliente esquecido — então erramos pro lado
+   * de acender.
+   */
+  private static pediuHumano(reply: string): boolean {
+    const t = reply.toLowerCase()
+    return [
+      'quem confirma é a equipe',
+      'vou verificar e te retorno',
+      'encaminhar para a nossa equipe',
+      'encaminhar para nossa equipe',
+      'encaminhar seus dados',
+      'encaminhar o seu atendimento',
+      'passar para a equipe',
+      'passar seu atendimento',
+      'vou chamar um consultor',
+      'um consultor vai te',
+    ].some((f) => t.includes(f))
+  }
+
+  /** Acende o vermelho e avisa no WhatsApp (tela sozinha não avisa ninguém). */
+  private static async marcarPrecisaHumano(conversationId: string, motivo: string): Promise<void> {
+    const conv = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { aiNeedsHuman: true, contact: { select: { name: true, phone: true } } },
+    })
+    if (!conv || conv.aiNeedsHuman) return  // já aceso: não repete o aviso
+
+    await prisma.conversation.update({
+      where: { id: conversationId },
+      data: { aiNeedsHuman: true },
+    }).catch(() => {})
+
+    const { WhatsAppService } = await import('./whatsapp.service')
+    await WhatsAppService.notifyAdmin(
+      `🔴 Cliente esperando a equipe\n${conv.contact?.name || ''} ${conv.contact?.phone || ''}\nMotivo: ${motivo}\nA conversa está marcada em vermelho no CRM.`,
+    ).catch(() => {})
+    logger.info(`[IA-bot] VERMELHO em conv=${conversationId} — ${motivo}`)
   }
 
   /**

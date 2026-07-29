@@ -84,6 +84,8 @@ export interface Conversation {
   aiAuto?: boolean
   /** Humano assumiu esta conversa: a IA fica calada até retomarem. */
   aiPaused?: boolean
+  /** Semáforo do atendimento da IA (vermelho pede gente, amarelo esfriou, verde mandou a ficha). */
+  aiSignal?: 'vermelho' | 'amarelo' | 'verde' | null
   createdAt: string
   updatedAt: string
   contact?: Contact

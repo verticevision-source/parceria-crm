@@ -181,6 +181,9 @@ model Conversation {
   // porque no número da própria IA ela responde por padrão — sem este campo não
   // haveria como distinguir "nunca foi ligada" de "alguém desligou de propósito".
   aiPaused          Boolean            @default(false)
+  // A IA declarou que não sabe e jogou pra equipe (ou bateu no teto de
+  // respostas). Vira o sinal VERMELHO: tem cliente esperando um humano.
+  aiNeedsHuman      Boolean            @default(false)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
