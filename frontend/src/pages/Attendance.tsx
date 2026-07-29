@@ -3,7 +3,7 @@ import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
   Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText,
-  Archive, ArchiveRestore, MoreVertical
+  Archive, ArchiveRestore, MoreVertical, Hand
 } from 'lucide-react'
 import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi } from '../services/api'
 import { getSocket } from '../services/socket'
@@ -153,6 +153,8 @@ export default function Attendance() {
   const aiAllowed = !!user?.aiEnabled || user?.role === 'ADMIN'
   const [aiSuggesting, setAiSuggesting] = useState(false)
   const [aiAuto, setAiAuto] = useState(false)
+  const [aiPaused, setAiPaused] = useState(false)
+  const [aiReplying, setAiReplying] = useState(false)
   // Imagem aberta em tela cheia (antes abria numa aba nova, saindo do app)
   const [lightbox, setLightbox] = useState<string | null>(null)
   const [showActions, setShowActions] = useState(false)
@@ -336,6 +338,7 @@ export default function Attendance() {
   const selectConversation = async (conv: Conversation) => {
     setSelected(conv)
     setAiAuto(!!conv.aiAuto)
+    setAiPaused(!!conv.aiPaused)
     setLoadingMessages(true)
     setShowEmojiPicker(false)
     setShowQuickReplies(false)
@@ -425,6 +428,38 @@ export default function Attendance() {
     } catch {
       setAiAuto(!next)
       toast.error('Erro ao alterar modo IA')
+    }
+  }
+
+  // Assumir/devolver a conversa. Pausar vale SÓ aqui — não desliga a IA no
+  // sistema, então não tem como pausar sem querer e deixar todo mundo sem
+  // atendimento.
+  const toggleAiPaused = async () => {
+    if (!selected) return
+    const next = !aiPaused
+    setAiPaused(next)
+    try {
+      await conversationsApi.setAiPaused(selected.id, next)
+      toast.success(next ? '✋ Você assumiu — a IA não responde aqui' : '🤖 A IA voltou a responder esta conversa')
+    } catch {
+      setAiPaused(!next)
+      toast.error('Erro ao alterar quem responde')
+    }
+  }
+
+  // Destrava conversa em que a IA ficou muda (o cliente respondeu e ela não).
+  const aiReplyNow = async () => {
+    if (!selected || aiReplying) return
+    setAiReplying(true)
+    try {
+      await conversationsApi.aiReplyNow(selected.id)
+      setAiPaused(false)
+      setAiAuto(true)
+      toast.success('🤖 A IA respondeu')
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'A IA não conseguiu responder agora')
+    } finally {
+      setAiReplying(false)
     }
   }
 
@@ -874,15 +909,31 @@ export default function Attendance() {
                     ))}
                   </div>
                 )}
-                {aiAllowed && (
+                {/* Conversa sob cuidado da IA: o controle passa a ser "quem
+                    responde". Aparece SEMPRE que aiAuto está ligada, mesmo sem
+                    permissão de IA — quem é dono da conversa precisa poder
+                    assumir o cliente a qualquer momento. */}
+                {aiAuto ? (
                   <button
-                    onClick={toggleAiAuto}
-                    title={aiAuto ? 'IA automática LIGADA (clique para desligar)' : 'Ligar resposta automática da IA'}
-                    className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors ${
-                      aiAuto ? 'bg-primary text-white' : 'bg-bg-tertiary text-text-muted hover:text-text-primary border border-border'
+                    onClick={toggleAiPaused}
+                    title={aiPaused
+                      ? 'Você está respondendo. Clique para devolver para a IA.'
+                      : 'A IA responde sozinha aqui. Clique para assumir você.'}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                      aiPaused
+                        ? 'bg-warning/15 text-warning border border-warning/40'
+                        : 'bg-primary text-white'
                     }`}
                   >
-                    <Sparkles size={13} /> {aiAuto ? 'IA Auto' : 'IA'}
+                    {aiPaused ? <><Hand size={13} /> Eu respondo</> : <><Sparkles size={13} /> IA respondendo</>}
+                  </button>
+                ) : aiAllowed && (
+                  <button
+                    onClick={toggleAiAuto}
+                    title="Ligar resposta automática da IA nesta conversa"
+                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors bg-bg-tertiary text-text-muted hover:text-text-primary border border-border"
+                  >
+                    <Sparkles size={13} /> IA
                   </button>
                 )}
                 <StatusBadge status={selected.status} />
@@ -905,6 +956,18 @@ export default function Attendance() {
                           className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-warning transition-colors">
                           <Clock size={15} /> Marcar como pendente
                         </button>
+                        {/* Resgate: se o cliente respondeu e a IA ficou muda
+                            (reinício do servidor derruba as respostas pendentes),
+                            isso força ela a responder na hora. */}
+                        {aiAuto && (
+                          <>
+                            <div className="h-px bg-border" />
+                            <button onClick={() => { aiReplyNow(); setShowActions(false) }} disabled={aiReplying}
+                              className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-primary transition-colors disabled:opacity-50">
+                              <Sparkles size={15} /> {aiReplying ? 'Respondendo...' : 'Fazer a IA responder agora'}
+                            </button>
+                          </>
+                        )}
                         <div className="h-px bg-border" />
                         {selected.status === 'CLOSED' ? (
                           <button onClick={() => { updateStatus('OPEN'); setShowActions(false) }}

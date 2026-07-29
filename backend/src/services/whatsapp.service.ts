@@ -247,7 +247,10 @@ function setupMessageListener(): void {
       )
 
       // ── IA: resposta automática (somente se o bot de fluxo não assumiu) ──
-      if (!botHandled && conversation.aiAuto && message.type === 'TEXT') {
+      // A decisão de responder ou não mora inteira no handleAiAutoReply: no
+      // número da própria IA ela atende por padrão, então filtrar por aiAuto
+      // aqui deixaria de fora justamente as conversas dela.
+      if (!botHandled && message.type === 'TEXT') {
         handleAiAutoReply(conversation, session, contact.phone).catch((e) =>
           logger.error('[WhatsAppService] Erro na resposta automática de IA:', e)
         )
@@ -432,7 +435,7 @@ async function handleRemarketingReply(contactId: string, phone: string): Promise
  * número dela.
  */
 async function handleAiAutoReply(
-  conversation: { id: string; userId: string },
+  conversation: { id: string; userId: string; aiAuto: boolean; aiPaused: boolean },
   session: { id: string; userId: string },
   phone: string
 ): Promise<void> {
@@ -440,11 +443,32 @@ async function handleAiAutoReply(
     const { AIBotService } = await import('./aiBot.service')
     const botUserId = await AIBotService.botUserId()
 
-    // Lead atribuído ao atendente de IA: só responde pelo número DELE.
-    // (Se o cliente responder na frente, quem atende é humano — a IA fica calada.)
-    if (botUserId && conversation.userId === botUserId) {
-      if (session.userId !== botUserId) return
+    // A conversa é da IA, no número DELA? Então ela atende POR PADRÃO — é um
+    // atendente, e atendente não precisa ser ligado cliente por cliente. Antes
+    // isso dependia de `aiAuto`, que era ligado só na conversa do número da
+    // frente: a conversa que nascia no número da IA vinha desligada e ela ficava
+    // muda com o cliente esperando.
+    const ehNumeroDaIA = !!botUserId && conversation.userId === botUserId && session.userId === botUserId
+
+    if (ehNumeroDaIA) {
+      // Pausa explícita do humano ("eu respondo") tem prioridade sobre tudo.
+      if (conversation.aiPaused) return
       if (!(await AIBotService.isBotUser(botUserId))) return
+
+      // Deixa o flag refletindo a realidade: é ele que faz o botão "IA
+      // respondendo / Eu respondo" aparecer no painel. Sem isso a IA atenderia
+      // sem o dono da conversa ter como assumir o cliente.
+      if (!conversation.aiAuto) {
+        await prisma.conversation.update({
+          where: { id: conversation.id },
+          data: { aiAuto: true },
+        }).catch(() => {})
+      }
+    } else {
+      // Fora do número dela, segue exigindo marcação explícita — e a IA nunca
+      // responde pelo número de um vendedor humano.
+      if (!conversation.aiAuto) return
+      if (botUserId && conversation.userId === botUserId) return
     }
 
     // Debounce, tetos e guarda anti-corrida ficam no AIBotService; ele responde
@@ -838,10 +862,29 @@ export class WhatsAppService {
       },
     })
 
+    // Humano respondeu PELO PAINEL numa conversa da IA: pausa ela sozinha. Sem
+    // isso os dois responderiam juntos e se contradiriam na frente do cliente.
+    // Só vale para envio pelo painel — o que é digitado no celular chega por
+    // webhook e não passa por aqui, então usar o celular não desliga a IA.
+    const pausarIA = opts?.aiGenerated !== true && !conversation.aiPaused
+      ? await (async () => {
+          const { AIBotService } = await import('./aiBot.service')
+          return AIBotService.isBotUser(conversation!.userId)
+        })().catch(() => false)
+      : false
+
     await prisma.conversation.update({
       where: { id: conversation.id },
-      data: { lastMessage: body, lastMessageAt: result.sentAt },
+      data: {
+        lastMessage: body,
+        lastMessageAt: result.sentAt,
+        ...(pausarIA ? { aiPaused: true } : {}),
+      },
     })
+    if (pausarIA) {
+      logger.info(`[IA-bot] Humano assumiu pelo painel — IA pausada em conv=${conversation.id}`)
+      if (io) io.to(`user:${ownerUserId}`).to('admins').emit('conversation:ai-paused', { conversationId: conversation.id, paused: true })
+    }
 
     if (io) {
       io.to(`user:${ownerUserId}`).to('admins').emit('new-message', { message, conversation, contact })

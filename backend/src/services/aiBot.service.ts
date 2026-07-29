@@ -128,6 +128,40 @@ export class AIBotService {
     AIBotService.pending.set(conversationId, { timer, sessionId, phone, firstAt })
   }
 
+  /**
+   * Força uma resposta AGORA, sem esperar o debounce — é o "responder agora" do
+   * painel, para destravar conversa em que a IA ficou muda (reinício do servidor
+   * derruba os temporizadores pendentes, que vivem em memória).
+   *
+   * Devolve o motivo quando não envia, senão o botão fica sem explicação.
+   */
+  static async replyNow(conversationId: string): Promise<{ sent: boolean; reason?: string }> {
+    if (AIBotService.inFlight.has(conversationId)) {
+      return { sent: false, reason: 'já está gerando uma resposta' }
+    }
+    const conv = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { whatsappSessionId: true, contact: { select: { phone: true } } },
+    })
+    if (!conv?.whatsappSessionId) return { sent: false, reason: 'conversa sem número de origem' }
+    if (!conv.contact?.phone) return { sent: false, reason: 'conversa sem contato' }
+
+    // Cancela o agendamento pendente, senão sairiam duas respostas.
+    const p = AIBotService.pending.get(conversationId)
+    if (p) {
+      clearTimeout(p.timer)
+      AIBotService.pending.delete(conversationId)
+    }
+
+    AIBotService.inFlight.add(conversationId)
+    try {
+      return await AIBotService.generateAndSend(conversationId, conv.whatsappSessionId, conv.contact.phone)
+    } finally {
+      AIBotService.inFlight.delete(conversationId)
+      AIBotService.redo.delete(conversationId)
+    }
+  }
+
   private static async run(conversationId: string, sessionId: string, phone: string): Promise<void> {
     AIBotService.inFlight.add(conversationId)
     try {
@@ -143,10 +177,14 @@ export class AIBotService {
     }
   }
 
-  private static async generateAndSend(conversationId: string, sessionId: string, phone: string): Promise<void> {
+  private static async generateAndSend(
+    conversationId: string,
+    sessionId: string,
+    phone: string
+  ): Promise<{ sent: boolean; reason?: string }> {
     const started = Date.now()
     const cfg = await AIBotService.getCfg()
-    if (!cfg?.enabled || !cfg?.botEnabled) return
+    if (!cfg?.enabled || !cfg?.botEnabled) return { sent: false, reason: 'IA desligada nas configurações' }
 
     const { WhatsAppService } = await import('./whatsapp.service')
 
@@ -163,7 +201,7 @@ export class AIBotService {
       await WhatsAppService.notifyAdmin(
         `🤖 A IA atingiu o limite de ${MAX_PER_CONVERSATION} respostas com o cliente ${phone} e parou.\nA conversa está no painel aguardando alguém assumir.`,
       ).catch(() => {})
-      return
+      return { sent: false, reason: `limite de ${MAX_PER_CONVERSATION} respostas nesta conversa` }
     }
 
     // ── Teto diário global: anti-runaway ──────────────────────────────────────
@@ -180,7 +218,7 @@ export class AIBotService {
           `🤖 A IA atingiu o limite diário de ${MAX_PER_DAY} respostas e parou de responder hoje.\nOs clientes ficam aguardando no painel.`,
         ).catch(() => {})
       }
-      return
+      return { sent: false, reason: `limite diário de ${MAX_PER_DAY} respostas atingido` }
     }
 
     // ── Guarda anti-corrida: se a última mensagem não é do cliente, alguém já
@@ -190,14 +228,14 @@ export class AIBotService {
       orderBy: { createdAt: 'desc' },
       select: { direction: true },
     })
-    if (last?.direction !== 'IN') return
+    if (last?.direction !== 'IN') return { sent: false, reason: 'a última mensagem não é do cliente' }
 
     const { AIService } = await import('./ai.service')
     const reply = await AIService.suggestForConversation(conversationId, {
       limit: HISTORY_LIMIT,
       promptOverride: cfg.botPrompt?.trim() || undefined,
     })
-    if (!reply?.trim()) return
+    if (!reply?.trim()) return { sent: false, reason: 'a IA não gerou texto' }
 
     // Envia SEMPRE pela sessão que recebeu (o número da IA) — nunca resolvendo
     // por usuário, senão sairia pelo número do vendedor dono da conversa.
@@ -206,6 +244,7 @@ export class AIBotService {
     logger.info(
       `[IA-bot] conv=${conversationId} replies=${used + 1}/${MAX_PER_CONVERSATION} dia=${today + 1}/${MAX_PER_DAY} chars=${reply.length} ms=${Date.now() - started}`
     )
+    return { sent: true }
   }
 
   /**

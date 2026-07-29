@@ -196,6 +196,8 @@ export const conversationsApi = {
     api.patch(`/conversations/${id}/status`, { status }),
   markAsRead: (id: string) => api.patch(`/conversations/${id}/read`),
   setAiAuto: (id: string, enabled: boolean) => api.patch(`/conversations/${id}/ai-auto`, { enabled }),
+  setAiPaused: (id: string, paused: boolean) => api.patch(`/conversations/${id}/ai-pause`, { paused }),
+  aiReplyNow: (id: string) => api.post(`/conversations/${id}/ai-reply-now`),
 }
 
 // Contacts

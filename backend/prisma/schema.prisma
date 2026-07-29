@@ -177,6 +177,10 @@ model Conversation {
   lastMessageAt     DateTime?
   unreadCount       Int                @default(0)
   aiAuto            Boolean            @default(false)  // IA responde automaticamente nesta conversa
+  // Pausa EXPLÍCITA do humano ("eu respondo agora"). Existe separado do aiAuto
+  // porque no número da própria IA ela responde por padrão — sem este campo não
+  // haveria como distinguir "nunca foi ligada" de "alguém desligou de propósito".
+  aiPaused          Boolean            @default(false)
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 

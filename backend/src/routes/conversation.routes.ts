@@ -17,6 +17,8 @@ router.get('/:id/messages', asyncHandler(ConversationController.getMessages))
 router.patch('/:id/status', asyncHandler(ConversationController.updateStatus))
 router.patch('/:id/read', asyncHandler(ConversationController.markAsRead))
 router.patch('/:id/ai-auto', asyncHandler(ConversationController.setAiAuto))
+router.patch('/:id/ai-pause', asyncHandler(ConversationController.setAiPaused))
+router.post('/:id/ai-reply-now', asyncHandler(ConversationController.aiReplyNow))
 
 // Tags
 router.post('/:id/tags', asyncHandler(ConversationController.addTag))

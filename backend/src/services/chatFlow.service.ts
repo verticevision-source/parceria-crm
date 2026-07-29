@@ -354,9 +354,16 @@ export class ChatFlowService {
       if (vendorUserId) {
         const { AIBotService } = await import('./aiBot.service')
         if (await AIBotService.isBotUser(vendorUserId)) {
+          // Marca as conversas da IA para ESTE TELEFONE — não por contactId.
+          // Contato é por usuário: o contactId daqui é o do número da FRENTE, e
+          // a conversa que nasce no número da IA usa outro contato. Filtrar por
+          // contactId ligava a IA só na conversa da frente e deixava a dela
+          // desligada — o cliente ficava esperando uma resposta que não vinha.
+          // Também limpa uma pausa antiga, senão a conversa reaproveitada de um
+          // atendimento anterior nasceria muda.
           await prisma.conversation.updateMany({
-            where: { contactId: session.contactId },
-            data: { aiAuto: true },
+            where: { userId: vendorUserId, contact: { phone } },
+            data: { aiAuto: true, aiPaused: false },
           }).catch(() => {})
           if (leadId) {
             await prisma.cRMNote.create({

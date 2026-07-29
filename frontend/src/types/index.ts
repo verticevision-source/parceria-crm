@@ -82,6 +82,8 @@ export interface Conversation {
   lastMessageAt?: string
   unreadCount: number
   aiAuto?: boolean
+  /** Humano assumiu esta conversa: a IA fica calada até retomarem. */
+  aiPaused?: boolean
   createdAt: string
   updatedAt: string
   contact?: Contact
