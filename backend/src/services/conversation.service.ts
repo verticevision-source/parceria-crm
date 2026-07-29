@@ -18,15 +18,22 @@ export type AISignal = 'vermelho' | 'amarelo' | 'verde' | null
  */
 export function aiSignal(
   conv: { aiAuto: boolean; aiNeedsHuman: boolean; linkEnviado?: boolean; lastMessageAt: Date | null },
-  ultimaDirecao?: 'IN' | 'OUT'
+  ultima?: { direction: 'IN' | 'OUT'; textBody?: string | null }
 ): AISignal {
   if (!conv.aiAuto) return null
   if (conv.aiNeedsHuman) return 'vermelho'
-  const parada =
-    ultimaDirecao === 'OUT' &&
+
+  // Amarelo só quando a ÚLTIMA coisa que mandamos foi uma PERGUNTA sem resposta.
+  // Sem esse filtro, toda conversa que terminou bem ("Obrigada, boa noite!")
+  // virava amarelo: 10 de 13 acendiam sem ter o que fazer, e alerta que pede
+  // ação inexistente ensina a equipe a ignorar a cor.
+  const perguntamos = ultima?.direction === 'OUT' && (ultima.textBody || '').includes('?')
+  const semResposta =
+    perguntamos &&
     conv.lastMessageAt != null &&
     Date.now() - conv.lastMessageAt.getTime() > SEM_RESPOSTA_MS
-  if (parada) return 'amarelo'
+  if (semResposta) return 'amarelo'
+
   if (conv.linkEnviado) return 'verde'
   return null
 }
@@ -56,7 +63,7 @@ export class ConversationService {
         _count: { select: { messages: true } },
         // Direção da última mensagem: é o que diz se estamos esperando o
         // cliente (amarelo) ou o cliente esperando a gente.
-        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true } },
+        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true, textBody: true } },
       },
       orderBy: { lastMessageAt: 'desc' },
     })
@@ -82,7 +89,7 @@ export class ConversationService {
       const { messages, ...rest } = c
       return {
         ...rest,
-        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]?.direction),
+        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]),
       }
     })
   }

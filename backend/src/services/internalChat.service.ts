@@ -151,7 +151,7 @@ export class InternalChatService {
       take: 100,
       include: {
         contact: { select: { id: true, name: true, phone: true, avatarUrl: true } },
-        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true } },
+        messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true, textBody: true } },
       },
     })
 
@@ -176,7 +176,7 @@ export class InternalChatService {
       const { messages, ...rest } = c
       return {
         ...rest,
-        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]?.direction),
+        aiSignal: aiSignal({ ...c, linkEnviado: comLink.has(c.id) }, messages[0]),
       }
     })
   }
