@@ -1,15 +1,16 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
   Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText,
-  Archive, ArchiveRestore
+  Archive, ArchiveRestore, MoreVertical
 } from 'lucide-react'
 import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
 import Avatar from '../components/UI/Avatar'
+import AudioPlayer from '../components/UI/AudioPlayer'
 import { StatusBadge } from '../components/UI/Badge'
 import { format, isToday, isYesterday } from 'date-fns'
 import toast from 'react-hot-toast'
@@ -152,6 +153,16 @@ export default function Attendance() {
   const aiAllowed = !!user?.aiEnabled || user?.role === 'ADMIN'
   const [aiSuggesting, setAiSuggesting] = useState(false)
   const [aiAuto, setAiAuto] = useState(false)
+  // Imagem aberta em tela cheia (antes abria numa aba nova, saindo do app)
+  const [lightbox, setLightbox] = useState<string | null>(null)
+  const [showActions, setShowActions] = useState(false)
+
+  useEffect(() => {
+    if (!lightbox) return
+    const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setLightbox(null) }
+    window.addEventListener('keydown', onEsc)
+    return () => window.removeEventListener('keydown', onEsc)
+  }, [lightbox])
 
   // Chat extras
   const [showEmojiPicker, setShowEmojiPicker] = useState(false)
@@ -875,25 +886,39 @@ export default function Attendance() {
                   </button>
                 )}
                 <StatusBadge status={selected.status} />
-                <div className="flex gap-1">
-                  <button onClick={() => updateStatus('OPEN')} title="Aberta"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-success transition-colors">
-                    <CheckCircle size={16} />
+                {/* Ações da conversa num menu com RÓTULOS — antes eram 3 ícones
+                    soltos sem texto, indecifráveis (e apertados no celular). */}
+                <div className="relative">
+                  <button onClick={() => setShowActions((v) => !v)} title="Ações da conversa"
+                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors">
+                    <MoreVertical size={18} />
                   </button>
-                  <button onClick={() => updateStatus('PENDING')} title="Pendente"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-warning transition-colors">
-                    <Clock size={16} />
-                  </button>
-                  {selected.status === 'CLOSED' ? (
-                    <button onClick={() => updateStatus('OPEN')} title="Desarquivar"
-                      className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-success transition-colors">
-                      <ArchiveRestore size={16} />
-                    </button>
-                  ) : (
-                    <button onClick={() => updateStatus('CLOSED')} title="Arquivar conversa"
-                      className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-danger transition-colors">
-                      <Archive size={16} />
-                    </button>
+                  {showActions && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowActions(false)} />
+                      <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-border bg-bg-secondary shadow-modal overflow-hidden">
+                        <button onClick={() => { updateStatus('OPEN'); setShowActions(false) }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-success transition-colors">
+                          <CheckCircle size={15} /> Marcar como aberta
+                        </button>
+                        <button onClick={() => { updateStatus('PENDING'); setShowActions(false) }}
+                          className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-warning transition-colors">
+                          <Clock size={15} /> Marcar como pendente
+                        </button>
+                        <div className="h-px bg-border" />
+                        {selected.status === 'CLOSED' ? (
+                          <button onClick={() => { updateStatus('OPEN'); setShowActions(false) }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-success transition-colors">
+                            <ArchiveRestore size={15} /> Desarquivar conversa
+                          </button>
+                        ) : (
+                          <button onClick={() => { updateStatus('CLOSED'); setShowActions(false) }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2.5 text-sm text-text-secondary hover:bg-bg-hover hover:text-danger transition-colors">
+                            <Archive size={15} /> Arquivar conversa
+                          </button>
+                        )}
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
@@ -918,22 +943,33 @@ export default function Attendance() {
                   <p className="text-sm">Nenhuma mensagem ainda</p>
                 </div>
               ) : (
-                messages.map((msg) => (
-                  <div key={msg.id} className={`flex ${msg.direction === 'OUT' ? 'justify-end' : 'justify-start'}`}>
+                messages.map((msg, i) => {
+                  const prev = i > 0 ? messages[i - 1] : null
+                  const at = new Date(msg.sentAt || msg.createdAt)
+                  const prevAt = prev ? new Date(prev.sentAt || prev.createdAt) : null
+                  // Separador quando muda o dia (inclusive na 1ª mensagem)
+                  const newDay = !prevAt || at.toDateString() !== prevAt.toDateString()
+                  // Agrupa mensagens seguidas do mesmo lado em menos de 3 min
+                  const grouped = !newDay && !!prevAt && prev!.direction === msg.direction
+                    && (at.getTime() - prevAt.getTime()) < 3 * 60 * 1000
+                  return (
+                  <Fragment key={msg.id}>
+                  {newDay && (
+                    <div className="flex justify-center py-1">
+                      <span className="text-[11px] px-3 py-1 rounded-full bg-bg-tertiary text-text-muted border border-border">
+                        {isToday(at) ? 'Hoje' : isYesterday(at) ? 'Ontem' : format(at, 'dd/MM/yyyy')}
+                      </span>
+                    </div>
+                  )}
+                  <div className={`flex ${msg.direction === 'OUT' ? 'justify-end' : 'justify-start'} ${grouped ? '-mt-2' : ''}`}>
                     <div className={msg.direction === 'OUT' ? 'message-bubble-out' : 'message-bubble-in'}>
                       {/* Audio */}
                       {msg.type === 'AUDIO' && msg.mediaUrl && (
-                        <div className="flex items-center gap-2 min-w-0 w-[min(220px,60vw)]">
-                          <Volume2 size={16} className="flex-shrink-0 opacity-70" />
-                          <audio
-                            controls
-                            preload="metadata"
-                            src={mediaSrc(msg.mediaUrl)}
-                            className="h-8 w-full min-w-0"
-                            style={{ filter: msg.direction === 'OUT' ? 'invert(1)' : 'none', opacity: 0.9 }}
-                            onError={() => toast.error('Não foi possível carregar o áudio')}
-                          />
-                        </div>
+                        <AudioPlayer
+                          src={mediaSrc(msg.mediaUrl)}
+                          outgoing={msg.direction === 'OUT'}
+                          onError={() => toast.error('Não foi possível carregar o áudio')}
+                        />
                       )}
                       {/* Image */}
                       {msg.type === 'IMAGE' && msg.mediaUrl && (
@@ -943,7 +979,7 @@ export default function Attendance() {
                             alt="imagem"
                             className="max-w-xs rounded-lg mb-1 cursor-pointer hover:opacity-90 transition-opacity"
                             loading="lazy"
-                            onClick={() => window.open(mediaSrc(msg.mediaUrl), '_blank')}
+                            onClick={() => setLightbox(mediaSrc(msg.mediaUrl))}
                             onError={(e) => {
                               const el = e.target as HTMLImageElement
                               el.style.display = 'none'
@@ -974,11 +1010,18 @@ export default function Attendance() {
                           href={mediaSrc(msg.mediaUrl)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm underline hover:opacity-80 transition-opacity"
+                          className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 w-[min(240px,62vw)] transition-opacity hover:opacity-80 ${
+                            msg.direction === 'OUT' ? 'bg-white/15' : 'bg-bg-tertiary'
+                          }`}
                           download
                         >
-                          <Paperclip size={14} />
-                          Baixar documento
+                          <FileText size={22} className="flex-shrink-0 opacity-80" />
+                          <span className="min-w-0">
+                            <span className="block text-sm font-medium truncate">
+                              {msg.textBody?.trim() || 'Documento'}
+                            </span>
+                            <span className="block text-[10px] opacity-70">Toque para abrir</span>
+                          </span>
                         </a>
                       )}
                       {/* Location */}
@@ -998,8 +1041,8 @@ export default function Attendance() {
                           </div>
                         </a>
                       )}
-                      {/* Text */}
-                      {msg.textBody && msg.type !== 'LOCATION' ? (
+                      {/* Text — DOCUMENT já mostra o nome do arquivo no próprio card */}
+                      {msg.textBody && msg.type !== 'LOCATION' && msg.type !== 'DOCUMENT' ? (
                         <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.textBody}</p>
                       ) : !msg.mediaUrl && msg.type !== 'AUDIO' && msg.type !== 'LOCATION' ? (
                         <p className="text-sm leading-relaxed opacity-60">[mídia]</p>
@@ -1009,7 +1052,9 @@ export default function Attendance() {
                       </p>
                     </div>
                   </div>
-                ))
+                  </Fragment>
+                  )
+                })
               )}
               <div ref={messagesEndRef} />
             </div>
@@ -1482,6 +1527,25 @@ export default function Attendance() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Imagem em tela cheia — clique fora ou Esc fecha, sem sair do app */}
+      {lightbox && (
+        <div className="modal-overlay" onClick={() => setLightbox(null)}>
+          <button
+            onClick={() => setLightbox(null)}
+            className="absolute top-4 right-4 p-2 rounded-full bg-black/50 text-white hover:bg-black/70 transition-colors"
+            title="Fechar"
+          >
+            <X size={20} />
+          </button>
+          <img
+            src={lightbox}
+            alt="imagem"
+            className="max-w-[92vw] max-h-[86vh] rounded-xl object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
         </div>
       )}
     </div>

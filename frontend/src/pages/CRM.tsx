@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { DragDropContext, Droppable, Draggable, DropResult } from '@hello-pangea/dnd'
-import { Plus, Phone, User, TrendingUp, Search, Layers, X, Trash2, MessageSquare, Send } from 'lucide-react'
+import { Plus, Phone, User, TrendingUp, Search, Layers, X, Trash2, MessageSquare, Send, Clock } from 'lucide-react'
 import { leadsApi, pipelineApi, contactsApi, crmBoardsApi, whatsappApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
@@ -24,12 +24,22 @@ interface Board {
   stages: PipelineStage[]
 }
 
-function LeadCard({ lead, index, onDelete, onOpenChat }: {
+/** Dias desde a última interação — vira alerta visual quando o lead esfria. */
+function staleInfo(iso?: string | null) {
+  if (!iso) return null
+  const days = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000)
+  if (days < 3) return null
+  return { days, tone: days >= 7 ? 'text-danger' : 'text-warning' }
+}
+
+function LeadCard({ lead, index, stageColor, onDelete, onOpenChat }: {
   lead: LeadWithChat; index: number
+  stageColor?: string
   onDelete: (id: string) => void
   onOpenChat: (lead: LeadWithChat) => void
 }) {
   const unread = lead.unreadCount || 0
+  const stale = staleInfo(lead.lastInteractionAt)
   return (
     <Draggable draggableId={lead.id} index={index}>
       {(provided, snapshot) => (
@@ -38,6 +48,12 @@ function LeadCard({ lead, index, onDelete, onOpenChat }: {
           {...provided.draggableProps}
           {...provided.dragHandleProps}
           className={`kanban-card mb-3 group relative ${snapshot.isDragging ? 'shadow-glow rotate-1' : ''} ${unread > 0 ? 'ring-1 ring-green-500/40' : ''}`}
+          style={{
+            ...provided.draggableProps.style,
+            // Cor da etapa no próprio card: antes ela só existia numa bolinha de
+            // 12px no topo da coluna, então todas as colunas pareciam iguais.
+            borderLeft: stageColor ? `3px solid ${stageColor}` : undefined,
+          }}
         >
           {/* Badge de mensagens não lidas */}
           {unread > 0 && (
@@ -57,7 +73,7 @@ function LeadCard({ lead, index, onDelete, onOpenChat }: {
               <button
                 onClick={(e) => { e.stopPropagation(); onOpenChat(lead) }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-green-500 p-0.5"
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-text-muted hover:text-green-500 p-0.5"
                 title="Abrir conversa"
               >
                 <MessageSquare size={13} />
@@ -65,7 +81,7 @@ function LeadCard({ lead, index, onDelete, onOpenChat }: {
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(lead.id) }}
                 onMouseDown={(e) => e.stopPropagation()}
-                className="opacity-0 group-hover:opacity-100 transition-opacity text-text-muted hover:text-red-500 p-0.5"
+                className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity text-text-muted hover:text-red-500 p-0.5"
                 title="Excluir lead"
               >
                 <Trash2 size={13} />
@@ -93,9 +109,16 @@ function LeadCard({ lead, index, onDelete, onOpenChat }: {
             )}
           </div>
           {lead.lastInteractionAt && (
-            <p className="text-text-muted text-xs mt-2 pt-2 border-t border-border/50">
-              {format(new Date(lead.lastInteractionAt), 'dd/MM HH:mm')}
-            </p>
+            <div className="flex items-center justify-between gap-2 mt-2 pt-2 border-t border-border/50">
+              <p className="text-text-muted text-xs">
+                {format(new Date(lead.lastInteractionAt), 'dd/MM HH:mm')}
+              </p>
+              {stale && (
+                <span className={`text-[10px] font-semibold flex items-center gap-1 ${stale.tone}`}>
+                  <Clock size={10} /> {stale.days}d parado
+                </span>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -112,25 +135,33 @@ function KanbanCol({
   onDeleteLead: (id: string) => void
   onOpenChat: (lead: LeadWithChat) => void
 }) {
+  // Soma dos valores da etapa — dá leitura de funil, que o contador de
+  // quantidade sozinho não dá.
+  const total = column.leads.reduce((s, l) => s + (l.value || 0), 0)
   return (
     <div className="flex flex-col bg-bg-secondary rounded-2xl border border-border w-[85vw] max-w-[280px] sm:w-64 flex-shrink-0 snap-start">
-      <div className="p-4 border-b border-border">
+      <div className="p-4 border-b border-border" style={{ borderTop: `2px solid ${column.color}`, borderTopLeftRadius: 14, borderTopRightRadius: 14 }}>
         <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: column.color }} />
+          <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: column.color }} />
           <h3 className="text-text-primary text-sm font-semibold truncate">{column.name}</h3>
-          <span className="ml-auto text-text-muted text-xs bg-bg-tertiary px-2 py-0.5 rounded-full">
+          <span className="ml-auto text-text-muted text-xs bg-bg-tertiary px-2 py-0.5 rounded-full flex-shrink-0">
             {column.leads.length}
           </span>
           {canManage && (
             <button
               onClick={() => onDelete(column.id)}
-              className="text-text-muted hover:text-red-500 p-0.5"
+              className="text-text-muted hover:text-red-500 p-0.5 flex-shrink-0"
               title="Remover etapa"
             >
               <Trash2 size={12} />
             </button>
           )}
         </div>
+        {total > 0 && (
+          <p className="text-success text-xs font-semibold mt-1.5">
+            R$ {total.toLocaleString('pt-BR')}
+          </p>
+        )}
       </div>
 
       <Droppable droppableId={column.id}>
@@ -143,7 +174,7 @@ function KanbanCol({
             }`}
           >
             {column.leads.map((lead, index) => (
-              <LeadCard key={lead.id} lead={lead as LeadWithChat} index={index} onDelete={onDeleteLead} onOpenChat={onOpenChat} />
+              <LeadCard key={lead.id} lead={lead as LeadWithChat} index={index} stageColor={column.color} onDelete={onDeleteLead} onOpenChat={onOpenChat} />
             ))}
             {provided.placeholder}
           </div>

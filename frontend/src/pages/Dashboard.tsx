@@ -6,11 +6,13 @@ import {
 } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, Legend,
+  PieChart, Pie, Cell, Legend, AreaChart, Area, CartesianGrid,
 } from 'recharts'
+import { useNavigate } from 'react-router-dom'
 import { dashboardApi, systemApi } from '../services/api'
 import { useAuth } from '../contexts/AuthContext'
 import { DashboardUser, DashboardAdmin } from '../types'
+import Avatar from '../components/UI/Avatar'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import { format } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -164,6 +166,7 @@ function HealthPanel({ health }: { health: HealthData }) {
 
 export default function Dashboard() {
   const { isAdmin } = useAuth()
+  const navigate = useNavigate()
   const [userData,  setUserData]  = useState<DashboardUser | null>(null)
   const [adminData, setAdminData] = useState<DashboardAdmin | null>(null)
   const [health, setHealth] = useState<HealthData | null>(null)
@@ -231,17 +234,22 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* ── Cards do usuário ── */}
+      {/* ── Cards do usuário: o que precisa de AÇÃO primeiro ── */}
       {userData && (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-          <StatCard title="Total Conversas"  value={userData.conversations.total}   icon={MessageSquare} color="primary" />
-          <StatCard title="Em Aberto"         value={userData.conversations.open}    icon={MessageCircle} color="info"    />
-          <StatCard title="Pendentes"         value={userData.conversations.pending} icon={Clock}         color="warning" />
-          <StatCard title="Finalizadas"       value={userData.conversations.closed}  icon={CheckCircle}   color="success" />
-          <StatCard title="Não Lidas"         value={userData.messages.unread}       icon={AlertCircle}   color="danger"  />
-          <StatCard title="Total Leads"       value={userData.leads.total}           icon={Briefcase}     color="primary" />
-          <StatCard title="Leads Abertos"     value={userData.leads.open}            icon={TrendingUp}    color="info"    />
-          <StatCard title="Leads Ganhos"      value={userData.leads.won}             icon={CheckCircle}   color="gold"    />
+          <StatCard title="Não Lidas"     value={userData.messages.unread}       icon={AlertCircle}   color="danger"  />
+          <StatCard title="Em Aberto"     value={userData.conversations.open}    icon={MessageCircle} color="info"    />
+          <StatCard title="Pendentes"     value={userData.conversations.pending} icon={Clock}         color="warning" />
+          <StatCard title="Leads Abertos" value={userData.leads.open}            icon={TrendingUp}    color="primary" />
+        </div>
+      )}
+      {/* Acumulados: contexto, não ação — peso visual menor */}
+      {userData && (
+        <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-text-muted px-1">
+          <span>{userData.conversations.total} conversas no total</span>
+          <span>{userData.conversations.closed} finalizadas</span>
+          <span>{userData.leads.total} leads</span>
+          <span className="text-gold-light">{userData.leads.won} ganhos</span>
         </div>
       )}
 
@@ -256,16 +264,50 @@ export default function Dashboard() {
               Visão Geral — Admin
             </h2>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-5">
-              <StatCard title="Usuários Ativos"   value={adminData.users.active}           icon={Users}         color="gold"    />
-              <StatCard title="WhatsApp Online"   value={adminData.users.connectedSessions} icon={Wifi}         color="info"    />
-              <StatCard title="Taxa de Conversão" value={`${adminData.leads.conversionRate ?? 0}%`} icon={TrendingUp} color="success" subtitle={`${adminData.leads.won ?? 0} ganhos · ${adminData.leads.lost ?? 0} perdidos`} />
-              <StatCard title="Total Leads"       value={adminData.leads.total}            icon={Briefcase}     color="primary" />
-              <StatCard title="Conversas Hoje"    value={adminData.conversations.today ?? 0} icon={MessageCircle} color="info"  />
               <StatCard title="Mensagens Hoje"    value={adminData.messages.today ?? 0}    icon={MessageSquare} color="primary" />
-              <StatCard title="Total Conversas"   value={adminData.conversations.total}    icon={MessageSquare} color="gold"    />
-              <StatCard title="Total Mensagens"   value={adminData.messages.total}         icon={MessageSquare} color="warning" />
+              <StatCard title="Conversas Hoje"    value={adminData.conversations.today ?? 0} icon={MessageCircle} color="info"  />
+              <StatCard title="Taxa de Conversão" value={`${adminData.leads.conversionRate ?? 0}%`} icon={TrendingUp} color="success" subtitle={`${adminData.leads.won ?? 0} ganhos · ${adminData.leads.lost ?? 0} perdidos`} />
+              <StatCard title="WhatsApp Online"   value={adminData.users.connectedSessions} icon={Wifi}         color="gold"    />
+            </div>
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs text-text-muted px-1 mt-3">
+              <span>{adminData.users.active} usuários ativos</span>
+              <span>{adminData.conversations.total} conversas no total</span>
+              <span>{adminData.leads.total} leads no total</span>
+              <span>{adminData.messages.total} mensagens no total</span>
             </div>
           </div>
+
+          {/* Movimento dos últimos 14 dias — não havia nenhuma série temporal */}
+          {adminData.daily?.length > 0 && (
+            <div className="card">
+              <h3 className="text-text-primary font-bold mb-1">Movimento — últimos 14 dias</h3>
+              <p className="text-text-muted text-xs mb-5">Mensagens recebidas e leads criados por dia</p>
+              <ResponsiveContainer width="100%" height={240}>
+                <AreaChart data={adminData.daily} margin={{ top: 5, right: 5, bottom: 0, left: -20 }}>
+                  <defs>
+                    <linearGradient id="gMsg" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6366f1" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="gLead" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#C9952A" stopOpacity={0.5} />
+                      <stop offset="100%" stopColor="#C9952A" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e2d4a" vertical={false} />
+                  <XAxis dataKey="dia" tickFormatter={(d: string) => format(new Date(d + 'T12:00:00'), 'dd/MM')}
+                    stroke="#4a6080" fontSize={11} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#4a6080" fontSize={11} tickLine={false} axisLine={false} />
+                  <Tooltip
+                    contentStyle={{ background: '#0f1622', border: '1px solid #1e2d4a', borderRadius: 12, fontSize: 12 }}
+                    labelFormatter={(d: string) => format(new Date(d + 'T12:00:00'), "dd 'de' MMMM", { locale: ptBR })}
+                  />
+                  <Area type="monotone" dataKey="mensagens" name="Mensagens" stroke="#6366f1" fill="url(#gMsg)" strokeWidth={2} />
+                  <Area type="monotone" dataKey="leads" name="Leads" stroke="#C9952A" fill="url(#gLead)" strokeWidth={2} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          )}
 
           {/* Saúde do sistema */}
           {health && <HealthPanel health={health} />}
@@ -395,14 +437,10 @@ export default function Dashboard() {
           <h3 className="text-text-primary font-bold mb-5">Últimas Mensagens Recebidas</h3>
           <div className="space-y-3">
             {userData.recentMessages.map((msg) => (
-              <div key={msg.id} className="flex items-start gap-4 p-4 rounded-xl"
+              <button key={msg.id} onClick={() => navigate('/attendance')}
+                className="w-full text-left flex items-start gap-4 p-4 rounded-xl transition-colors hover:border-primary/40"
                 style={{ background: 'rgba(8,13,23,0.6)', border: '1px solid #1e2d4a' }}>
-                <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
-                  style={{ background: 'rgba(99,102,241,0.15)' }}>
-                  <span className="text-primary-light text-sm font-bold">
-                    {msg.contact?.name?.charAt(0).toUpperCase() || '?'}
-                  </span>
-                </div>
+                <Avatar src={msg.contact?.avatarUrl} name={msg.contact?.name || msg.contact?.phone} size={40} />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
                     <p className="text-text-primary text-sm font-semibold truncate">
@@ -414,7 +452,7 @@ export default function Dashboard() {
                   </div>
                   <p className="text-text-muted text-sm truncate mt-0.5">{msg.textBody}</p>
                 </div>
-              </div>
+              </button>
             ))}
           </div>
         </div>

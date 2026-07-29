@@ -1,9 +1,12 @@
+import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
   Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye, FileText, Search, ShieldAlert, UserX
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
+import { conversationsApi } from '../../services/api'
+import { getSocket } from '../../services/socket'
 import Logo from '../Logo'
 import Avatar from '../UI/Avatar'
 
@@ -17,17 +20,29 @@ const navItems = [
   { to: '/team-chat',  icon: MessagesSquare,  label: 'Chat Interno' },
 ]
 
-const adminItems = [
-  { to: '/admin/sellers',  icon: ShieldAlert, label: 'Central de Vendedores' },
-  { to: '/leads-desqualificados', icon: UserX, label: 'Leads Desqualificados' },
-  { to: '/monitor',        icon: Eye,        label: 'Monitor ao Vivo' },
-  { to: '/reports',        icon: BarChart3,  label: 'Relatórios' },
-  { to: '/flows',          icon: Workflow,   label: 'Robô / Fluxos' },
-  { to: '/crm-boards',     icon: Layers,     label: 'CRM Boards' },
-  { to: '/bulk-messages',  icon: Send,       label: 'Envio em Massa' },
-  { to: '/templates',      icon: FileText,   label: 'Modelos' },
-  { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
-  { to: '/users',          icon: Users,      label: 'Usuários' },
+// Admin dividido em 2 blocos: os 10 itens numa lista corrida viravam uma parede
+// de links de peso igual (e estouravam com scroll em telas baixas).
+const adminGroups = [
+  {
+    title: 'Operação',
+    items: [
+      { to: '/admin/sellers',  icon: ShieldAlert, label: 'Central de Vendedores' },
+      { to: '/leads-desqualificados', icon: UserX, label: 'Leads Desqualificados' },
+      { to: '/monitor',        icon: Eye,        label: 'Monitor ao Vivo' },
+      { to: '/reports',        icon: BarChart3,  label: 'Relatórios' },
+    ],
+  },
+  {
+    title: 'Configuração',
+    items: [
+      { to: '/flows',          icon: Workflow,   label: 'Robô / Fluxos' },
+      { to: '/crm-boards',     icon: Layers,     label: 'CRM Boards' },
+      { to: '/bulk-messages',  icon: Send,       label: 'Envio em Massa' },
+      { to: '/templates',      icon: FileText,   label: 'Modelos' },
+      { to: '/admin/whatsapp', icon: Smartphone, label: 'Gerenciar Números' },
+      { to: '/users',          icon: Users,      label: 'Usuários' },
+    ],
+  },
 ]
 
 interface SidebarProps {
@@ -37,6 +52,31 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, logout, isAdmin } = useAuth()
+  const [unread, setUnread] = useState(0)
+
+  // Total de não-lidas pro badge do Atendimento. Atualiza no socket (imediato)
+  // e num intervalo folgado (rede de segurança se o socket cair).
+  useEffect(() => {
+    let alive = true
+    const load = () => {
+      conversationsApi.findAll()
+        .then((r) => {
+          if (!alive) return
+          const total = (r.data.data || []).reduce((s: number, c: any) => s + (c.unreadCount || 0), 0)
+          setUnread(total)
+        })
+        .catch(() => { /* silencioso: badge não pode quebrar a navegação */ })
+    }
+    load()
+    const socket = getSocket()
+    socket.on('new-message', load)
+    const timer = setInterval(load, 60000)
+    return () => {
+      alive = false
+      socket.off('new-message', load)
+      clearInterval(timer)
+    }
+  }, [])
 
   return (
     <>
@@ -106,29 +146,35 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
             >
               <Icon size={17} />
               <span className="text-sm font-medium">{label}</span>
+              {/* Não-lidas: o sinal mais importante pra quem vive no CRM */}
+              {to === '/attendance' && unread > 0 && (
+                <span className="ml-auto min-w-[20px] h-5 px-1.5 rounded-full bg-primary text-white text-[10px] font-bold flex items-center justify-center">
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
             </NavLink>
           ))}
 
-          {isAdmin && (
-            <>
+          {isAdmin && adminGroups.map((group) => (
+            <div key={group.title}>
               <div className="pt-5 pb-2 px-4">
                 <p className="text-text-muted text-[10px] font-bold uppercase tracking-widest">
-                  Admin
+                  {group.title}
                 </p>
               </div>
-              {adminItems.map(({ to, icon: Icon, label }) => (
+              {group.items.map(({ to, icon: Icon, label }) => (
                 <NavLink
                   key={to}
                   to={to}
                   onClick={onClose}
-                  className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                  className={({ isActive }) => `sidebar-link ${isActive ? 'active-gold' : ''}`}
                 >
                   <Icon size={17} />
                   <span className="text-sm font-medium">{label}</span>
                 </NavLink>
               ))}
-            </>
-          )}
+            </div>
+          ))}
         </nav>
 
         {/* ── Footer ── */}

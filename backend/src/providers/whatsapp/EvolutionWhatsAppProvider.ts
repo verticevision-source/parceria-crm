@@ -140,7 +140,9 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
             enabled: true,
             url: webhookUrl,
             webhookByEvents: false,
-            webhookBase64: true,
+            // Sem base64 no webhook: a mídia é guardada como referência
+            // (evo:instancia:msgId) e baixada sob demanda pelo proxy de mídia.
+            webhookBase64: false,
             events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'],
           },
         })
@@ -350,23 +352,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
 
   // ── Webhook ───────────────────────────────────────────────────────────────
 
-  /** Baixa a mídia de uma mensagem recebida sob demanda (quando o webhook não
-   *  envia o base64). Retorna data URL. */
-  private async fetchMediaBase64(sessionId: string, keyId: string): Promise<string | undefined> {
-    try {
-      const data = await this.req<any>('POST', `/chat/getBase64FromMediaMessage/${sessionId}`, {
-        message: { key: { id: keyId } },
-      })
-      if (data?.base64) {
-        const mime = data.mimetype || 'application/octet-stream'
-        return `data:${mime};base64,${data.base64}`
-      }
-    } catch {
-      // mídia indisponível
-    }
-    return undefined
-  }
-
   async handleWebhook(payload: unknown): Promise<void> {
     const data = payload as any
     const event: string = (data.event || '').toLowerCase()
@@ -516,28 +501,6 @@ export class EvolutionWhatsAppProvider implements IWhatsAppProvider {
       || (m.contactsArrayMessage ? `👤 ${m.contactsArrayMessage.displayName || (m.contactsArrayMessage.contacts?.length || '') + ' contatos compartilhados'}` : '')
       || ''
     )
-  }
-
-  /** Extrai base64 de mídia (webhookBase64) e retorna como data URL com o mimetype */
-  private extractMediaBase64(message: any): string | undefined {
-    if (!message) return undefined
-    const candidates = [
-      message.imageMessage,
-      message.videoMessage,
-      message.audioMessage,
-      message.pttMessage,
-      message.documentMessage,
-      message.stickerMessage,
-    ]
-    for (const m of candidates) {
-      if (m?.base64) {
-        const b64: string = m.base64
-        if (b64.startsWith('data:')) return b64
-        const mime = m.mimetype || 'application/octet-stream'
-        return `data:${mime};base64,${b64}`
-      }
-    }
-    return undefined
   }
 
   private detectType(message: any): IncomingMessage['type'] {

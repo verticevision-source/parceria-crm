@@ -181,6 +181,8 @@ export interface DashboardAdmin {
   conversations: { total: number; today?: number }
   leads: { total: number; won?: number; lost?: number; conversionRate?: number }
   messages: { total: number; today?: number }
+  /** Série dos últimos 14 dias (mensagens recebidas e leads criados por dia) */
+  daily: { dia: string; mensagens: number; leads: number }[]
   leadsPerStage: { name: string; color: string; count: number }[]
   conversationsPerUser: { name: string; count: number }[]
   leadsPerUser: { name: string; count: number }[]
