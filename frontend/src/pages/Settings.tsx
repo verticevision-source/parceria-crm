@@ -16,6 +16,7 @@ function AISettingsTab() {
   const [cfg, setCfg] = useState({
     provider: 'gemini', model: '', systemPrompt: '', enabled: false, hasApiKey: false,
     botEnabled: false, botUserId: '', botPrompt: '', defaultBotPrompt: '',
+    botRequiredQuestions: '',
   })
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(true)
@@ -44,6 +45,7 @@ function AISettingsTab() {
         provider: cfg.provider, model: cfg.model,
         systemPrompt: cfg.systemPrompt, enabled: cfg.enabled,
         botEnabled: cfg.botEnabled, botUserId: cfg.botUserId || null, botPrompt: cfg.botPrompt,
+        botRequiredQuestions: cfg.botRequiredQuestions,
       }
       if (apiKey.trim()) payload.apiKey = apiKey.trim()
       const r = await aiApi.updateConfig(payload)
@@ -179,6 +181,27 @@ function AISettingsTab() {
             <textarea value={cfg.botPrompt || ''} onChange={(e) => setCfg({ ...cfg, botPrompt: e.target.value })}
               rows={14} className="input-field resize-none text-xs font-mono"
               placeholder="Clique em 'usar texto sugerido' pra começar de um texto pronto e ajustar." />
+          </div>
+
+          {/* Campo separado do prompt de propósito: essas perguntas mudam toda
+              semana, e editar o prompt inteiro pra isso arrisca apagar sem
+              perceber as regras de segurança (não prometer taxa, não pedir
+              documento). */}
+          <div>
+            <label className="block text-sm font-medium text-text-secondary mb-1.5">
+              Perguntas obrigatórias <span className="text-xs text-text-muted">(uma por linha)</span>
+            </label>
+            <textarea
+              value={cfg.botRequiredQuestions || ''}
+              onChange={(e) => setCfg({ ...cfg, botRequiredQuestions: e.target.value })}
+              rows={6}
+              className="input-field resize-none text-sm"
+              placeholder={'Qual é o seu nome?\nQuanto você precisa?\nVocê tem renda própria, comércio ou é autônomo?'}
+            />
+            <p className="text-text-muted text-xs mt-1.5">
+              Ela pergunta uma por mensagem, na ordem, e não encerra o atendimento sem todas.
+              Se o cliente já respondeu antes, ela não repete.
+            </p>
           </div>
 
           <div className="rounded-xl p-3" style={{ background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.2)' }}>

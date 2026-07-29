@@ -659,6 +659,11 @@ model AIConfig {
   botEnabled   Boolean  @default(false)
   botUserId    String?
   botPrompt    String?  @db.Text             // prompt do atendimento automático
+  // Perguntas que a IA TEM que fazer, uma por linha. Campo separado do prompt
+  // de propósito: mexer nisso é rotina do dia a dia, e editar o prompt inteiro
+  // arrisca apagar sem perceber as regras de segurança (não prometer taxa,
+  // não pedir documento, etc.).
+  botRequiredQuestions String? @db.Text
   updatedAt    DateTime @updatedAt @default(now())
 
   @@map("ai_config")

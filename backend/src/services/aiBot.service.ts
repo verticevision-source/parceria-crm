@@ -233,7 +233,7 @@ export class AIBotService {
     const { AIService } = await import('./ai.service')
     const reply = await AIService.suggestForConversation(conversationId, {
       limit: HISTORY_LIMIT,
-      promptOverride: cfg.botPrompt?.trim() || undefined,
+      promptOverride: AIBotService.buildPrompt(cfg),
     })
     if (!reply?.trim()) return { sent: false, reason: 'a IA não gerou texto' }
 
@@ -256,12 +256,41 @@ export class AIBotService {
     const { AIService } = await import('./ai.service')
     return AIService.generateReply(
       [{ role: 'customer', text }],
-      cfg?.botPrompt?.trim() || DEFAULT_BOT_PROMPT,
+      AIBotService.buildPrompt(cfg),
     )
   }
 
   /** Texto sugerido pro painel (botão "usar texto sugerido"). */
   static defaultPrompt(): string {
     return DEFAULT_BOT_PROMPT
+  }
+
+  /**
+   * Prompt efetivo = prompt base + as perguntas obrigatórias do painel.
+   *
+   * Fica montado num lugar só para o "testar resposta" do painel usar EXATAMENTE
+   * o que vai pro cliente — testar com um prompt e atender com outro é como o
+   * robô passa vergonha em produção.
+   */
+  private static buildPrompt(cfg: any): string {
+    const base = cfg?.botPrompt?.trim() || DEFAULT_BOT_PROMPT
+    const perguntas = String(cfg?.botRequiredQuestions || '')
+      .split('\n')
+      .map((l: string) => l.replace(/^\s*[-*\d.)\s]+/, '').trim())
+      .filter(Boolean)
+    if (perguntas.length === 0) return base
+
+    const lista = perguntas.map((p, i) => `${i + 1}. ${p}`).join('\n')
+    return `${base}
+
+PERGUNTAS OBRIGATÓRIAS
+Você precisa coletar TODAS estas informações antes de encerrar o atendimento:
+${lista}
+
+Como conduzir:
+- Antes de perguntar, leia o histórico acima. Se o cliente já respondeu, NÃO pergunte de novo.
+- Uma pergunta por mensagem, na ordem da lista, começando pela primeira que ainda falta.
+- Enquanto faltar alguma, TODA mensagem sua tem que terminar com a próxima que falta. Se o cliente perguntar outra coisa, responda curto e faça a pergunta em seguida.
+- Não encerre nem diga que vai passar pra equipe enquanto faltar alguma.`
   }
 }
