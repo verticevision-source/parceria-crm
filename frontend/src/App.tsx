@@ -22,6 +22,7 @@ import Monitor from './pages/Monitor'
 import Templates from './pages/Templates'
 import Settings from './pages/Settings'
 import Search from './pages/Search'
+import MinhaCarteira from './pages/MinhaCarteira'
 import { PageLoader } from './components/UI/LoadingSpinner'
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
@@ -35,6 +36,15 @@ function AdminRoute({ children }: { children: React.ReactNode }) {
   const { user, isAdmin } = useAuth()
   if (!user) return <Navigate to="/login" replace />
   if (!isAdmin) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
+// Telas de venda (funil e roleta): gerente de carteira não vende, então nem
+// pela URL digitada à mão ela cai aqui.
+function VendaRoute({ children }: { children: React.ReactNode }) {
+  const { user, isGerente } = useAuth()
+  if (!user) return <Navigate to="/login" replace />
+  if (isGerente) return <Navigate to="/carteira" replace />
   return <>{children}</>
 }
 
@@ -63,13 +73,14 @@ export default function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/attendance" element={<Attendance />} />
-        <Route path="/crm" element={<CRM />} />
+        <Route path="/crm" element={<VendaRoute><CRM /></VendaRoute>} />
         <Route path="/contacts" element={<Contacts />} />
         <Route path="/search" element={<Search />} />
         <Route path="/whatsapp" element={<WhatsAppConfig />} />
-        <Route path="/roulette" element={<Roulette />} />
+        <Route path="/roulette" element={<VendaRoute><Roulette /></VendaRoute>} />
         <Route path="/team-chat" element={<InternalChat />} />
-        <Route path="/crm-boards" element={<CRMBoards />} />
+        <Route path="/carteira" element={<MinhaCarteira />} />
+        <Route path="/crm-boards" element={<VendaRoute><CRMBoards /></VendaRoute>} />
         <Route path="/settings" element={<Settings />} />
 
         <Route

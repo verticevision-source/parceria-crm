@@ -46,6 +46,12 @@ export const usersApi = {
   remove: (id: string) => api.delete(`/users/${id}`),
   setAi: (id: string, enabled: boolean) => api.patch(`/users/${id}/ai`, { enabled }),
   syncFichaLinks: () => api.post('/users/sync-ficha-links'),
+  syncManagers: () => api.post('/users/sync-managers'),
+}
+
+// Carteiras do Parceria Financeiro que o usuário logado gerencia
+export const portfolioApi = {
+  wallets: () => api.get('/portfolio/wallets'),
 }
 
 // IA

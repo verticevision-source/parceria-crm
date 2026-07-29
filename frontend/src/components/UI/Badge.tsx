@@ -37,6 +37,7 @@ export function StatusBadge({ status }: { status: string }) {
     LOST:         { label: 'Perdido',         variant: 'danger'  },
     ADMIN:        { label: 'Administrador',   variant: 'gold'    },
     USER:         { label: 'Atendente',       variant: 'info'    },
+    GERENTE:      { label: 'Gerente de Carteira', variant: 'gold' },
   }
   const config = map[status] || { label: status, variant: 'muted' as const }
   return <Badge variant={config.variant}>{config.label}</Badge>

@@ -7,7 +7,7 @@ const createSchema = z.object({
   name: z.string().min(2),
   email: z.string().email(),
   password: z.string().min(6),
-  role: z.enum(['ADMIN', 'USER']).default('USER'),
+  role: z.enum(['ADMIN', 'USER', 'GERENTE']).default('USER'),
 })
 
 const updateSchema = z.object({
@@ -41,6 +41,11 @@ export class UserController {
 
   static async syncFichaLinks(_req: AuthRequest, res: Response): Promise<void> {
     const result = await UserService.syncFichaLinks()
+    res.json({ success: true, data: result })
+  }
+
+  static async syncManagers(_req: AuthRequest, res: Response): Promise<void> {
+    const result = await UserService.syncManagers()
     res.json({ success: true, data: result })
   }
 

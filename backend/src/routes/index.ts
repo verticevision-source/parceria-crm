@@ -25,6 +25,7 @@ import tagRoutes from './tag.routes'
 import autoTagRoutes from './autoTag.routes'
 import scheduledMessageRoutes from './scheduledMessage.routes'
 import systemRoutes from './system.routes'
+import portfolioRoutes from './portfolio.routes'
 
 const router = Router()
 
@@ -54,5 +55,6 @@ router.use('/tags', tagRoutes)
 router.use('/auto-tags', autoTagRoutes)
 router.use('/scheduled-messages', scheduledMessageRoutes)
 router.use('/system', systemRoutes)
+router.use('/portfolio', portfolioRoutes)
 
 export default router

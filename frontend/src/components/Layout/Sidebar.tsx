@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { NavLink } from 'react-router-dom'
 import {
   LayoutDashboard, MessageSquare, Users, UserCircle,
-  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye, FileText, Search, ShieldAlert, UserX
+  Settings, Smartphone, Briefcase, LogOut, Shield, Shuffle, Layers, Send, X, BarChart3, MessagesSquare, Workflow, Eye, FileText, Search, ShieldAlert, UserX, Wallet
 } from 'lucide-react'
 import { useAuth } from '../../contexts/AuthContext'
 import { conversationsApi } from '../../services/api'
@@ -17,6 +17,17 @@ const navItems = [
   { to: '/contacts',   icon: UserCircle,      label: 'Contatos' },
   { to: '/search',     icon: Search,          label: 'Busca' },
   { to: '/roulette',   icon: Shuffle,         label: 'Roleta' },
+  { to: '/team-chat',  icon: MessagesSquare,  label: 'Chat Interno' },
+]
+
+// Gerente de carteira não vende: sem Roleta (não recebe lead) e sem CRM/Kanban
+// (o funil é de venda). No lugar entra a carteira dela.
+const gerenteNavItems = [
+  { to: '/dashboard',  icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/attendance', icon: MessageSquare,   label: 'Atendimento' },
+  { to: '/carteira',   icon: Wallet,          label: 'Minha Carteira' },
+  { to: '/contacts',   icon: UserCircle,      label: 'Contatos' },
+  { to: '/search',     icon: Search,          label: 'Busca' },
   { to: '/team-chat',  icon: MessagesSquare,  label: 'Chat Interno' },
 ]
 
@@ -51,8 +62,9 @@ interface SidebarProps {
 }
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin, isGerente } = useAuth()
   const [unread, setUnread] = useState(0)
+  const items = isGerente ? gerenteNavItems : navItems
 
   // Total de não-lidas pro badge do Atendimento. Atualiza no socket (imediato)
   // e num intervalo folgado (rede de segurança se o socket cair).
@@ -120,6 +132,11 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                     <Shield size={10} className="text-gold" />
                     Administrador
                   </span>
+                ) : isGerente ? (
+                  <span className="flex items-center gap-1">
+                    <Wallet size={10} className="text-gold" />
+                    Gerente de Carteira
+                  </span>
                 ) : 'Atendente'}
               </p>
             </div>
@@ -137,7 +154,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* ── Nav (scrollável) ── */}
         <nav className="flex-1 overflow-y-auto px-3 space-y-1 min-h-0">
-          {navItems.map(({ to, icon: Icon, label }) => (
+          {items.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
               to={to}

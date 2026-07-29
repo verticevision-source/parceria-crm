@@ -10,6 +10,7 @@ router.use(authMiddleware, adminMiddleware)
 
 router.get('/', asyncHandler(UserController.findAll))
 router.post('/sync-ficha-links', asyncHandler(UserController.syncFichaLinks))
+router.post('/sync-managers', asyncHandler(UserController.syncManagers))
 router.post('/', asyncHandler(UserController.create))
 router.get('/:id', asyncHandler(UserController.findById))
 router.put('/:id', asyncHandler(UserController.update))

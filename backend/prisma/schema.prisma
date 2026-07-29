@@ -10,6 +10,10 @@ datasource db {
 enum UserRole {
   ADMIN
   USER
+  // Gerente de carteira: cobra e gerencia a carteira de clientes no Parceria
+  // Financeiro. NÃO vende — por ser um papel próprio (e não uma flag), fica
+  // naturalmente fora da roleta, que consulta sempre `role: 'USER'`.
+  GERENTE
 }
 
 enum BulkMessageStatus {
@@ -80,8 +84,31 @@ model User {
   internalMessages InternalMessage[]
   callLogs         CallLog[]
   aiEnabled        Boolean  @default(false)  // admin libera assistente de IA p/ este usuário
+  walletLinks      WalletLink[]
 
   @@map("users")
+}
+
+// Carteira do Parceria Financeiro que este usuário gerencia. É só um PONTEIRO:
+// o CRM não guarda saldo, parcela nem transação — dinheiro tem uma fonte da
+// verdade só, que é o financeiro. Aqui fica o vínculo (quem opera o quê) e,
+// opcionalmente, de qual número do WhatsApp essa carteira cobra.
+model WalletLink {
+  id         String   @id @default(uuid())
+  userId     String
+  walletId   String
+  walletName String
+  // Número usado para cobrar os clientes desta carteira (Fase D).
+  whatsappSessionId String?
+  isActive   Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, walletId])
+  @@index([walletId])
+  @@map("wallet_links")
 }
 
 model WhatsAppSession {

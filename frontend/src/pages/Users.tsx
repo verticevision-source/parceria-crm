@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Sparkles, RefreshCw } from 'lucide-react'
+import { Plus, Edit2, Check, X, Wifi, WifiOff, Shield, User, Sparkles, RefreshCw, Wallet } from 'lucide-react'
 import { usersApi } from '../services/api'
 import { User as UserType } from '../types'
 import Avatar from '../components/UI/Avatar'
@@ -9,7 +9,7 @@ import { StatusBadge } from '../components/UI/Badge'
 import { PageLoader } from '../components/UI/LoadingSpinner'
 import toast from 'react-hot-toast'
 
-const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER', avatarUrl: '', fichaLink: '' }
+const emptyForm = { name: '', email: '', password: '', role: 'USER' as 'ADMIN' | 'USER' | 'GERENTE', avatarUrl: '', fichaLink: '' }
 
 export default function Users() {
   const [users, setUsers] = useState<UserType[]>([])
@@ -44,6 +44,24 @@ export default function Users() {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao sincronizar (verifique a configuração da integração)'
       toast.error(msg)
     } finally { setSyncing(false) }
+  }
+
+  const [syncingGer, setSyncingGer] = useState(false)
+  const syncGerentes = async () => {
+    setSyncingGer(true)
+    try {
+      const res = await usersApi.syncManagers()
+      const d = res.data.data
+      const partes = [`${d.total} gerente(s)`, `${d.carteiras} carteira(s)`]
+      if (d.criados) partes.push(`${d.criados} criado(s)`)
+      if (d.promovidos) partes.push(`${d.promovidos} promovido(s)`)
+      if (d.ignoradosAdmin) partes.push(`${d.ignoradosAdmin} admin mantido(s)`)
+      toast.success(`Gerentes sincronizados: ${partes.join(', ')}`)
+      load()
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Erro ao sincronizar gerentes'
+      toast.error(msg)
+    } finally { setSyncingGer(false) }
   }
 
   const openCreate = () => {
@@ -130,6 +148,10 @@ export default function Users() {
             <RefreshCw size={15} className={syncing ? 'animate-spin' : ''} />
             {syncing ? 'Sincronizando...' : 'Sincronizar fichas'}
           </button>
+          <button onClick={syncGerentes} disabled={syncingGer} className="btn-ghost border border-border flex items-center gap-2">
+            <RefreshCw size={15} className={syncingGer ? 'animate-spin' : ''} />
+            {syncingGer ? 'Sincronizando...' : 'Sincronizar gerentes'}
+          </button>
           <button onClick={openCreate} className="btn-primary flex items-center gap-2">
             <Plus size={16} />
             Novo Usuário
@@ -179,6 +201,8 @@ export default function Users() {
                     <div className="flex items-center gap-1.5">
                       {u.role === 'ADMIN' ? (
                         <Shield size={14} className="text-primary" />
+                      ) : u.role === 'GERENTE' ? (
+                        <Wallet size={14} className="text-gold" />
                       ) : (
                         <User size={14} className="text-text-muted" />
                       )}
@@ -315,11 +339,12 @@ export default function Users() {
             <label className="block text-sm font-medium text-text-secondary mb-2">Tipo</label>
             <select
               value={form.role}
-              onChange={(e) => setForm({ ...form, role: e.target.value as 'ADMIN' | 'USER' })}
+              onChange={(e) => setForm({ ...form, role: e.target.value as 'ADMIN' | 'USER' | 'GERENTE' })}
               className="input-field"
               disabled={!!editing}
             >
               <option value="USER">Atendente</option>
+              <option value="GERENTE">Gerente de Carteira</option>
               <option value="ADMIN">Administrador</option>
             </select>
           </div>

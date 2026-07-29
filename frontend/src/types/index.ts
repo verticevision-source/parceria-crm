@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'USER'
+export type UserRole = 'ADMIN' | 'USER' | 'GERENTE'
 export type SessionStatus = 'CONNECTED' | 'DISCONNECTED' | 'WAITING_QR' | 'ERROR'
 export type ConversationStatus = 'OPEN' | 'PENDING' | 'CLOSED'
 export type LeadStatus = 'OPEN' | 'WON' | 'LOST'

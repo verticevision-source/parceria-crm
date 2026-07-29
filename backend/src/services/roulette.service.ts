@@ -10,9 +10,21 @@ export function setRouletteSocketIO(socketServer: SocketServer): void {
 
 export class RouletteService {
 
+  /**
+   * Só VENDEDOR (role USER) entra na roleta. Gerente de carteira e admin não
+   * vendem — sem esta trava, bastaria chamar /roulette/toggle uma vez para a
+   * linha de RouletteAgent nascer e o usuário passar a receber lead.
+   */
+  private static async assertVendedor(userId: string): Promise<void> {
+    const u = await prisma.user.findUnique({ where: { id: userId }, select: { role: true } })
+    if (!u) throw new Error('Usuário não encontrado')
+    if (u.role !== 'USER') throw new Error('Apenas vendedores entram na roleta')
+  }
+
   // ── Agente: toggle ativo/inativo ─────────────────────────────────────────
 
   static async toggleActive(userId: string): Promise<{ isActive: boolean }> {
+    await RouletteService.assertVendedor(userId)
     // Garante que existe registro para o agente
     const existing = await prisma.rouletteAgent.findUnique({ where: { userId } })
 
@@ -57,6 +69,7 @@ export class RouletteService {
 
   static async setWeight(userId: string, weight: number): Promise<void> {
     if (weight < 1 || weight > 10) throw new Error('Peso deve ser entre 1 e 10')
+    await RouletteService.assertVendedor(userId)
 
     await prisma.rouletteAgent.upsert({
       where: { userId },
@@ -71,6 +84,7 @@ export class RouletteService {
   // (o toggle em /roulette/toggle só afeta o próprio usuário logado)
 
   static async setActive(userId: string, isActive: boolean): Promise<void> {
+    await RouletteService.assertVendedor(userId)
     await prisma.rouletteAgent.upsert({
       where: { userId },
       create: { userId, isActive },
@@ -332,7 +346,10 @@ export class RouletteService {
     // Por padrão exige agente ativo; no roteamento por cidade aceitamos os
     // vendedores dos grupos mesmo fora da roleta (requireActive=false)
     const requireActive = input.requireActive !== false
-    const whereAgents: any = {}
+    // Trava de papel no ponto da distribuição: só vendedor ativo recebe lead.
+    // É aqui que o furo doeria — gerente de carteira e usuário desativado não
+    // podem entrar no sorteio nem por linha de RouletteAgent legada.
+    const whereAgents: any = { user: { role: 'USER', isActive: true } }
     if (requireActive) whereAgents.isActive = true
     if (teamIds.length > 0) {
       whereAgents.teams = { some: { teamId: { in: teamIds } } }
