@@ -45,7 +45,9 @@ export class WhatsAppController {
     const message = await WhatsAppService.sendMessage(
       req.user!.userId,
       parse.data.to,
-      parse.data.body
+      parse.data.body,
+      // Pessoa digitando no painel: se a conversa for da IA, ela pausa.
+      { humanPainel: true }
     )
     res.json({ success: true, data: message })
   }
@@ -154,7 +156,7 @@ export class WhatsAppController {
     // (Opcional) 1ª msg pro CLIENTE pelo número do vendedor, se o admin escreveu uma.
     let sent = false
     if (message) {
-      try { await WhatsAppService.sendMessage(vendorUserId, phone, message); sent = true }
+      try { await WhatsAppService.sendMessage(vendorUserId, phone, message, { humanPainel: true }); sent = true }
       catch (e: any) { res.status(409).json({ success: false, message: `Lead atribuído e vendedor avisado, mas a msg pro cliente falhou: ${e?.message}` }); return }
     }
     res.json({ success: true, data: { assigned: true, notified, sent } })

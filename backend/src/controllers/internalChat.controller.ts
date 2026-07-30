@@ -69,7 +69,7 @@ export class InternalChatController {
     if (audio) {
       message = await WhatsAppService.sendAudio(conv.userId, conv.contact.phone, audio, mimetype)
     } else if (body?.trim()) {
-      message = await WhatsAppService.sendMessage(conv.userId, conv.contact.phone, body.trim())
+      message = await WhatsAppService.sendMessage(conv.userId, conv.contact.phone, body.trim(), { humanPainel: true })
     } else {
       res.status(400).json({ success: false, message: 'Nada para enviar' }); return
     }

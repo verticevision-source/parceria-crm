@@ -779,7 +779,7 @@ export class WhatsAppService {
     return refreshed
   }
 
-  static async sendMessage(userId: string, to: string, body: string) {
+  static async sendMessage(userId: string, to: string, body: string, opts?: { humanPainel?: boolean }) {
     // Prefere a sessão reconectada mais recente do próprio usuário.
     // NUNCA cair para "qualquer número conectado": isso já fez o robô enviar
     // pelo número de outro vendedor quando o número da frente caiu — expondo o
@@ -790,7 +790,7 @@ export class WhatsAppService {
     })
     if (!session) throw new Error('Nenhuma sessão conectada encontrada para este usuário')
 
-    return WhatsAppService.deliver(session, userId, to, body)
+    return WhatsAppService.deliver(session, userId, to, body, opts)
   }
 
   /**
@@ -800,7 +800,7 @@ export class WhatsAppService {
    * `userId` da conversa), então resolver por usuário mandaria pelo número errado.
    */
   static async sendFromSession(
-    sessionId: string, to: string, body: string, opts?: { aiGenerated?: boolean }
+    sessionId: string, to: string, body: string, opts?: { aiGenerated?: boolean; humanPainel?: boolean }
   ) {
     const session = await prisma.whatsAppSession.findUnique({ where: { id: sessionId } })
     if (!session) throw new Error('Sessão não encontrada')
@@ -815,7 +815,7 @@ export class WhatsAppService {
     ownerUserId: string,
     to: string,
     body: string,
-    opts?: { aiGenerated?: boolean }
+    opts?: { aiGenerated?: boolean; humanPainel?: boolean }
   ) {
     const phone = normalizePhone(to)
     let contact = await findContactGlobal(phone)
@@ -862,11 +862,15 @@ export class WhatsAppService {
       },
     })
 
-    // Humano respondeu PELO PAINEL numa conversa da IA: pausa ela sozinha. Sem
-    // isso os dois responderiam juntos e se contradiriam na frente do cliente.
-    // Só vale para envio pelo painel — o que é digitado no celular chega por
-    // webhook e não passa por aqui, então usar o celular não desliga a IA.
-    const pausarIA = opts?.aiGenerated !== true && !conversation.aiPaused
+    // Humano respondeu PELO PAINEL numa conversa da IA: pausa ela sozinha, senão
+    // os dois responderiam juntos e se contradiriam na frente do cliente.
+    //
+    // A intenção precisa ser EXPLÍCITA (`humanPainel`). Antes isso era deduzido
+    // de "não é aiGenerated", e a dedução estava errada: a mensagem de abertura
+    // que o ROBÔ manda pelo número da IA na hora do repasse também não é
+    // aiGenerated — então todo lead novo era entregue e a IA pausada em seguida.
+    // A cliente Erika ficou 16 minutos no vácuo por causa disso.
+    const pausarIA = opts?.humanPainel === true && !conversation.aiPaused
       ? await (async () => {
           const { AIBotService } = await import('./aiBot.service')
           return AIBotService.isBotUser(conversation!.userId)
@@ -880,8 +884,10 @@ export class WhatsAppService {
         lastMessageAt: result.sentAt,
         ...(pausarIA ? { aiPaused: true } : {}),
         // Humano respondeu: apaga o vermelho. Sem isso o sinal ficaria aceso
-        // pra sempre e a tela viraria um mar de alertas ignorados.
-        ...(opts?.aiGenerated !== true ? { aiNeedsHuman: false } : {}),
+        // pra sempre e a tela viraria um mar de alertas ignorados. Também exige
+        // intenção explícita — mensagem automática do robô não é atendimento
+        // humano e não pode apagar um alerta que ninguém viu.
+        ...(opts?.humanPainel === true ? { aiNeedsHuman: false } : {}),
       },
     })
     if (pausarIA) {
