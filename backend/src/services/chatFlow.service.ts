@@ -166,14 +166,17 @@ export class ChatFlowService {
       : await ChatFlowService.getActiveFlow()
     if (!flow) return false
 
-    // Não inicia se o dono não tem número conectado: o fluxo ficaria "mudo"
-    // (perguntas que nunca saem) e o lead sumiria sem atendimento.
-    const canSend = await prisma.whatsAppSession.findFirst({
-      where: { userId, status: 'CONNECTED' },
-      select: { id: true },
-    })
+    // Não inicia se o número que vai atender não está conectado: o fluxo ficaria
+    // "mudo" (perguntas que nunca saem) e o cliente sumiria sem atendimento.
+    //
+    // Confere a SESSÃO, não o dono da conversa. Antes checava o dono, e um
+    // contato antigo no nome de um vendedor inativo travava o robô: o cliente
+    // escrevia no número do Roberto e nada acontecia, sem erro visível.
+    const canSend = sessionId
+      ? await prisma.whatsAppSession.findFirst({ where: { id: sessionId, status: 'CONNECTED' }, select: { id: true } })
+      : await prisma.whatsAppSession.findFirst({ where: { userId, status: 'CONNECTED' }, select: { id: true } })
     if (!canSend) {
-      logger.warn(`[Flow] Não iniciado p/ ${phone}: dono da conversa sem número conectado`)
+      logger.warn(`[Flow] Não iniciado p/ ${phone}: número de atendimento sem conexão`)
       return false
     }
 
@@ -218,12 +221,41 @@ export class ChatFlowService {
     return true
   }
 
+  /**
+   * Envia pelo NÚMERO que está atendendo a conversa — nunca pelo "dono" dela.
+   *
+   * O dono da conversa e o dono do número são coisas diferentes: a roleta
+   * reatribui o responsável sem mexer no número, e um contato antigo pode estar
+   * no nome de outro vendedor. Enviando por usuário, o robô do Roberto tentou
+   * responder pelo número do Vitor (inativo, desconectado) e ficou MUDO — e, se
+   * o Vitor estivesse conectado, o cliente receberia o menu de um número
+   * aleatório da equipe. Mesmo erro que a IA já teve.
+   */
+  private static async enviarNaConversa(conversationId: string, userIdFallback: string, phone: string, texto: string): Promise<void> {
+    const { WhatsAppService } = await import('./whatsapp.service')
+    const conv = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: { whatsappSessionId: true },
+    })
+    try {
+      if (conv?.whatsappSessionId) {
+        await WhatsAppService.sendFromSession(conv.whatsappSessionId, phone, texto)
+        return
+      }
+      await WhatsAppService.sendMessage(userIdFallback, phone, texto)
+    } catch (e: any) {
+      logger.warn(`[Flow] Falha ao enviar p/ ${phone}: ${e?.message}`)
+    }
+  }
+
   /** Avança a execução a partir do nó atual até esperar resposta ou encerrar. */
   private static async advance(sessionId: string, userId: string, phone: string): Promise<void> {
     const { WhatsAppService } = await import('./whatsapp.service')
 
     let session = await prisma.chatFlowSession.findUnique({ where: { id: sessionId } })
     if (!session) return
+    const convId = session.conversationId
+    const enviar = (texto: string) => ChatFlowService.enviarNaConversa(convId, userId, phone, texto)
     const flow = await prisma.chatFlow.findUnique({ where: { id: session.flowId } })
     if (!flow) return
 
@@ -247,7 +279,7 @@ export class ChatFlowService {
       }
 
       if (t === 'message') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
+        if (node.data.text) await enviar(node.data.text)
 
         // Avisa o DONO do número (ex.: a gerente da carteira) que tem algo
         // esperando ação. Sem isso o cliente manda vídeo de renovação, ou pede
@@ -266,7 +298,7 @@ Cliente: ${phone}`)
       }
 
       if (t === 'question') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
+        if (node.data.text) await enviar(node.data.text)
         // pausa aguardando resposta
         await prisma.chatFlowSession.update({
           where: { id: sessionId },
@@ -317,14 +349,14 @@ Cliente: ${phone}`)
         } catch (e: any) {
           logger.warn(`[Flow] Consulta ao financeiro falhou (${phone}): ${e?.message}`)
         }
-        await WhatsAppService.sendMessage(userId, phone, texto).catch((e: any) => logger.warn('[Flow] Falha ao enviar consulta: ' + e?.message))
+        await enviar(texto)
         const next = outEdges(currentId)[0]
         currentId = next?.target || null
         continue
       }
 
       if (t === 'handoff') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
+        if (node.data.text) await enviar(node.data.text)
         await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
         // Encaminha para a roleta (time específico se node.data.teamId)
         try {
@@ -344,7 +376,7 @@ Cliente: ${phone}`)
 
       // Encaminha para a roleta da CIDADE (casa a última resposta com um time)
       if (t === 'cityHandoff') {
-        if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
+        if (node.data.text) await enviar(node.data.text)
         await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
         try {
           const { RouletteService } = await import('./roulette.service')
@@ -378,7 +410,7 @@ Cliente: ${phone}`)
           ? `${head}\n\n1️⃣ ${optDaily}\n2️⃣ ${optWeekly}\n3️⃣ ${optNone}\n\n${warn}\n\nResponda com 1, 2 ou 3.`
           : `${head}\n\n1️⃣ ${optDaily}\n2️⃣ ${optNone}\n\n${warn}\n\nResponda com 1 ou 2.`
 
-        await WhatsAppService.sendMessage(userId, phone, text).catch((e: any) => logger.warn('[Flow] Falha ao enviar pergunta: ' + e?.message))
+        await enviar(text)
         const vars = { ...((session.vars as any) || {}), weeklyOffered }
         await prisma.chatFlowSession.update({
           where: { id: sessionId },
@@ -405,6 +437,10 @@ Cliente: ${phone}`)
 
   // ── Lógica do nó cityRoute: interpreta modalidade + cidade e roteia ──────────
   private static async runCityRoute(node: FlowNode, session: any, userId: string, phone: string): Promise<void> {
+    // Mesmo envio por NÚMERO do advance: o dono da conversa pode não ser o dono
+    // do número (a roleta reatribui o responsável sem mexer no número).
+    const enviar = (texto: string) =>
+      ChatFlowService.enviarNaConversa(session.conversationId, userId, phone, texto)
     const { WhatsAppService } = await import('./whatsapp.service')
     const { RouletteService } = await import('./roulette.service')
     const vars = (session.vars as any) || {}
@@ -433,7 +469,7 @@ Cliente: ${phone}`)
     // Não interessado (qualquer cidade) → agradece + Kanban "Não interessados"
     if (choice === 'nao') {
       const msg = d.msgNotInterested || 'Sem problemas! 😊 Agradecemos o contato. Se mudar de ideia, é só chamar aqui. 👋'
-      await WhatsAppService.sendMessage(userId, phone, msg).catch((e: any) => logger.warn('[Flow] Falha ao enviar msg final: ' + e?.message))
+      await enviar(msg)
       const stageId = await ChatFlowService.ensureStage('Não interessados', '#94a3b8')
       await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-nao-interesse', `Robô: não tem interesse. Cidade informada: ${city || '-'}`)
       return
@@ -476,7 +512,7 @@ Cliente: ${phone}`)
       if (noneOnline) {
         const holdMsg = d.msgQueued
           || 'Recebido! ✅ Um consultor da sua região vai te chamar aqui no WhatsApp em breve. Obrigado pela paciência! 🙌'
-        await WhatsAppService.sendMessage(userId, phone, holdMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente (fila): ' + e?.message))
+        await enviar(holdMsg)
 
         if (leadId) {
           const stageId = await ChatFlowService.ensureStage('Aguardando atendimento', '#eab308')
@@ -530,7 +566,7 @@ Cliente: ${phone}`)
         const tpl = d.msgServed
           || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
         const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
-        await WhatsAppService.sendMessage(userId, phone, custMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente: ' + e?.message))
+        await enviar(custMsg)
 
         const leadContact = await prisma.contact.findUnique({ where: { id: session.contactId } }).catch(() => null)
         const leadName = leadContact?.name && leadContact.name !== phone ? leadContact.name : 'Cliente'
@@ -555,7 +591,7 @@ Cliente: ${phone}`)
       const tpl = d.msgServed
         || 'Perfeito! ✅ {vendedor} vai te chamar agora aqui no WhatsApp.\n\nPode ser de *outro número* — é da nossa equipe, pode responder normalmente. 🙌'
       const custMsg = tpl.replace(/\{vendedor\}/gi, vendorName || 'Um consultor')
-      await WhatsAppService.sendMessage(userId, phone, custMsg).catch((e: any) => logger.warn('[Flow] Falha ao avisar o cliente: ' + e?.message))
+      await enviar(custMsg)
 
       // O vendedor PUXA a conversa pelo número DELE. Sem isso o lead só aparece
       // no painel — no WhatsApp dele não existe conversa (o cliente nunca falou
@@ -582,7 +618,7 @@ Cliente: ${phone}`)
 
     // Interessado + cidade NÃO atendida → msg fora de área + Kanban "Fora de área"
     const oat = d.msgOutOfArea || 'Obrigado pelo interesse! 🙏 No momento ainda não atendemos a sua região, mas estamos expandindo e em breve devemos chegar aí. Vou guardar seu contato pra te avisar. 💚'
-    await WhatsAppService.sendMessage(userId, phone, oat).catch((e: any) => logger.warn('[Flow] Falha ao enviar fora-de-area: ' + e?.message))
+    await enviar(oat)
     const stageId = await ChatFlowService.ensureStage('Fora de área', '#f59e0b')
     await ChatFlowService.leadToStage(session.contactId, userId, stageId, 'robo-fora-area', `Robô: fora de área. Cidade: ${cityDisplay} | ${modalityLabel}`)
   }
