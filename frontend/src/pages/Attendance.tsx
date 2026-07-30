@@ -294,11 +294,19 @@ export default function Attendance() {
 
     socket.on('new-message', ({ message, conversation, contact }: { message: Message; conversation: Conversation; contact?: Conversation['contact'] }) => {
       setMessages((prev) => {
-        if (selectedRef.current?.id === conversation.id) {
-          if (prev.some((m) => m.id === message.id)) return prev
-          return [...prev, message]
+        if (selectedRef.current?.id !== conversation.id) return prev
+        if (prev.some((m) => m.id === message.id)) return prev
+        // Chegou a versão real de algo que ainda está como bolha provisória?
+        // Substitui, em vez de somar — senão a mensagem aparece duplicada.
+        const provisoria = prev.findIndex(
+          (m) => m.pending && m.direction === 'OUT' && (m.textBody || '') === (message.textBody || '')
+        )
+        if (provisoria >= 0) {
+          const next = [...prev]
+          next[provisoria] = message
+          return next
         }
-        return prev
+        return [...prev, message]
       })
       setConversations((prev) => {
         const idx = prev.findIndex((c) => c.id === conversation.id)
@@ -437,11 +445,16 @@ export default function Attendance() {
         .catch(() => {})
         .then(() => whatsappApi.sendMessage(conv.contact?.phone || '', body)))
       const real = res?.data?.data as Message | undefined
-      // Troca a provisória pela real (mesmo id do servidor). Assim o evento do
-      // socket, que dedupe por id, não cria uma segunda bolha.
-      setMessages((prev) =>
-        prev.map((m) => (m.id === tempId ? (real ? { ...real } : ({ ...m, pending: false } as Message)) : m))
-      )
+      // O socket avisa quando o servidor SALVA — isso costuma chegar ANTES da
+      // resposta HTTP. Se ele já colocou a mensagem real, aqui só removemos a
+      // provisória; trocar às cegas deixava as DUAS na tela e parecia que a
+      // mensagem tinha sido enviada duas vezes.
+      setMessages((prev) => {
+        if (real && prev.some((m) => m.id === real.id)) {
+          return prev.filter((m) => m.id !== tempId)
+        }
+        return prev.map((m) => (m.id === tempId ? (real ? { ...real } : ({ ...m, pending: false } as Message)) : m))
+      })
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Erro ao enviar mensagem')
       setMessages((prev) => prev.filter((m) => m.id !== tempId))
