@@ -56,6 +56,15 @@ export const portfolioApi = {
     api.get('/portfolio/clients', { params: walletId ? { walletId } : {} }),
   borrower: (chave: { cpf?: string; id?: string; phone?: string }) =>
     api.get('/portfolio/borrower', { params: chave }),
+  darBaixa: (dados: {
+    loanId: string
+    installmentId: string
+    amount: number
+    moraAmount: number
+    metodo: 'DINHEIRO' | 'PIX'
+    opPassword: string
+    eventoId: string
+  }) => api.post('/portfolio/payments', dados),
 }
 
 // IA

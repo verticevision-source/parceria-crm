@@ -52,13 +52,15 @@ export default function MinhaCarteira() {
   const [filtro, setFiltro] = useState<'atrasados' | 'todos'>('atrasados')
   const [aberto, setAberto] = useState<Cliente | null>(null)
 
-  useEffect(() => {
+  const recarregar = () => {
     portfolioApi
       .clients()
       .then((r) => setDados(r.data.data))
       .catch((e) => setErro(e?.response?.data?.message || 'Não foi possível carregar sua carteira'))
       .finally(() => setLoading(false))
-  }, [])
+  }
+
+  useEffect(() => { recarregar() }, [])
 
   const clientes: Cliente[] = dados?.clientes || []
 
@@ -170,7 +172,7 @@ export default function MinhaCarteira() {
         </>
       )}
 
-      {aberto && <FichaCliente c={aberto} onFechar={() => setAberto(null)} />}
+      {aberto && <FichaCliente c={aberto} onFechar={() => setAberto(null)} onMudou={recarregar} />}
     </div>
   )
 }
@@ -222,9 +224,10 @@ function LinhaCliente({ c, onAbrir }: { c: Cliente; onAbrir: () => void }) {
   )
 }
 
-function FichaCliente({ c, onFechar }: { c: Cliente; onFechar: () => void }) {
+function FichaCliente({ c, onFechar, onMudou }: { c: Cliente; onFechar: () => void; onMudou: () => void }) {
   const [ficha, setFicha] = useState<any>(null)
   const [carregando, setCarregando] = useState(true)
+  const [baixando, setBaixando] = useState<Parcela | null>(null)
 
   useEffect(() => {
     const onEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') onFechar() }
@@ -308,6 +311,7 @@ function FichaCliente({ c, onFechar }: { c: Cliente; onFechar: () => void }) {
                           <th className="text-right p-2 font-medium">Valor</th>
                           <th className="text-right p-2 font-medium">Pago</th>
                           <th className="text-left p-2 font-medium">Situação</th>
+                          <th className="p-2"></th>
                         </tr>
                       </thead>
                       <tbody>
@@ -328,6 +332,21 @@ function FichaCliente({ c, onFechar }: { c: Cliente; onFechar: () => void }) {
                                   <span className="text-text-muted">A vencer</span>
                                 )}
                               </td>
+                              <td className="p-2 text-right">
+                                {p.status !== 'PAID' && (
+                                  <button
+                                    onClick={() => {
+                                      // A mora sugerida vem da lista da carteira, que já
+                                      // calculou com o motor do financeiro.
+                                      const daLista = c.parcelas.find((x) => x.id === p.id)
+                                      setBaixando({ ...p, moraSugerida: daLista?.moraSugerida ?? 0 })
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-[11px] font-semibold whitespace-nowrap transition-colors"
+                                  >
+                                    Dar baixa
+                                  </button>
+                                )}
+                              </td>
                             </tr>
                           )
                         })}
@@ -338,13 +357,214 @@ function FichaCliente({ c, onFechar }: { c: Cliente; onFechar: () => void }) {
               ))}
 
               <p className="text-text-muted text-[11px] pt-2 border-t border-border">
-                Dados vindos do Parceria Financeiro em tempo real. A baixa de pagamento
-                entra na próxima etapa — por enquanto continue dando baixa por lá.
+                Dados vindos do Parceria Financeiro em tempo real. A baixa também é gravada
+                lá — este painel não guarda valor nenhum.
               </p>
             </>
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Baixa de pagamento. Duas coisas que o desenho tem que deixar óbvias, senão o
+ * dinheiro entra errado:
+ *  - O JUROS está DENTRO do valor recebido, não somado a ele. Por isso a tela
+ *    mostra a conta desmembrada em vez de só dois campos soltos.
+ *  - A cascata: pagar mais que a parcela adianta as próximas. A gerente vê
+ *    quais serão quitadas ANTES de confirmar, senão a baixa "some" aos olhos
+ *    dela e ela lança de novo.
+ */
+function ModalBaixa({
+  c,
+  parcela,
+  onFechar,
+  onPronto,
+}: {
+  c: Cliente
+  parcela: Parcela
+  onFechar: () => void
+  onPronto: () => void
+}) {
+  const sugerido = parcela.valor - (parcela.pago || 0) + (parcela.moraSugerida || 0)
+  const [valor, setValor] = useState(sugerido.toFixed(2))
+  const [juros, setJuros] = useState((parcela.moraSugerida || 0).toFixed(2))
+  const [metodo, setMetodo] = useState<'DINHEIRO' | 'PIX'>('DINHEIRO')
+  const [senha, setSenha] = useState('')
+  const [enviando, setEnviando] = useState(false)
+  const [resultado, setResultado] = useState<any>(null)
+  // Uma chave por abertura do modal: repetir a MESMA baixa não duplica.
+  const [eventoId] = useState(() =>
+    (globalThis.crypto?.randomUUID?.() as string) || `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+  )
+
+  const vNum = Number(valor.replace(',', '.')) || 0
+  const jNum = Number(juros.replace(',', '.')) || 0
+  const principal = Math.max(0, vNum - jNum)
+  const jurosMaior = jNum > vNum
+
+  // Simula a cascata: preenche a parcela alvo e vai quitando as próximas.
+  const quitadas = useMemo(() => {
+    if (principal <= 0) return []
+    const pend = c.parcelas.filter((p) => p.status !== 'PAID')
+    const ordem = [
+      ...pend.filter((p) => p.id === parcela.id),
+      ...pend.filter((p) => p.id !== parcela.id).sort((a, b) => a.numero - b.numero),
+    ]
+    let resta = principal
+    const out: number[] = []
+    for (const p of ordem) {
+      const falta = p.valor - (p.pago || 0)
+      if (falta <= 0.004) continue
+      if (resta >= falta - 0.005) {
+        out.push(p.numero)
+        resta -= falta
+      } else break
+    }
+    return out
+  }, [principal, c.parcelas, parcela.id])
+
+  const sobra = useMemo(() => {
+    const pend = c.parcelas.filter((p) => p.status !== 'PAID')
+    const totalFalta = pend.reduce((s, p) => s + Math.max(0, p.valor - (p.pago || 0)), 0)
+    return Math.max(0, principal - totalFalta)
+  }, [principal, c.parcelas])
+
+  const confirmar = async () => {
+    if (vNum <= 0) return toast.error('Informe o valor recebido')
+    if (jurosMaior) return toast.error('O juros não pode ser maior que o valor recebido')
+    if (!senha) return toast.error('Confirme com sua senha de operação')
+    setEnviando(true)
+    try {
+      const r = await portfolioApi.darBaixa({
+        loanId: c.loanId,
+        installmentId: parcela.id,
+        amount: vNum,
+        moraAmount: jNum,
+        metodo,
+        opPassword: senha,
+        eventoId,
+      })
+      setSenha('')
+      setResultado(r.data.data)
+      toast.success(r.data.data?.repetido ? 'Esta baixa já estava registrada' : 'Baixa registrada no financeiro')
+      onPronto()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Não foi possível dar baixa', { duration: 7000 })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/75 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div className="bg-bg-secondary w-full sm:max-w-md max-h-[92vh] sm:rounded-2xl rounded-t-2xl border border-border overflow-hidden flex flex-col">
+        <div className="p-4 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-text-primary font-bold">Dar baixa · parcela {parcela.numero}</h2>
+            <p className="text-text-muted text-xs mt-0.5 truncate">{c.cliente.nome}</p>
+          </div>
+          <button onClick={onFechar} className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted flex-shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="p-4 overflow-y-auto space-y-4">
+          {resultado ? (
+            <div className="space-y-3">
+              <div className="p-3 rounded-xl bg-success/10 border border-success/30">
+                <p className="text-success font-semibold text-sm">
+                  {resultado.emprestimo?.quitado ? '✅ Empréstimo quitado!' : '✅ Baixa registrada'}
+                </p>
+                <p className="text-text-secondary text-xs mt-1">
+                  Saldo devedor agora: {dinheiro(resultado.emprestimo?.saldoDevedor ?? 0)}
+                </p>
+              </div>
+              <button onClick={onFechar} className="btn-primary w-full">Fechar</button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                  Valor recebido <span className="text-text-muted text-xs">(total, com o juros dentro)</span>
+                </label>
+                <input value={valor} onChange={(e) => setValor(e.target.value)} inputMode="decimal" className="input-field text-lg font-semibold" />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">
+                  Juros por atraso <span className="text-text-muted text-xs">(sugerido, pode mudar)</span>
+                </label>
+                <input value={juros} onChange={(e) => setJuros(e.target.value)} inputMode="decimal" className="input-field" />
+              </div>
+
+              {/* A conta desmembrada: é o que evita a gerente somar o juros duas vezes */}
+              <div className="rounded-xl p-3 text-sm space-y-1" style={{ background: 'rgba(99,102,241,.06)', border: '1px solid rgba(99,102,241,.2)' }}>
+                <Linha rotulo="Recebido do cliente" valor={dinheiro(vNum)} />
+                <Linha rotulo="— Juros (receita à parte)" valor={dinheiro(jNum)} />
+                <Linha rotulo="= Abate da dívida" valor={dinheiro(principal)} forte />
+                {jurosMaior && (
+                  <p className="text-danger text-xs pt-1">O juros não pode ser maior que o valor recebido.</p>
+                )}
+                {quitadas.length > 0 && (
+                  <p className="text-text-secondary text-xs pt-1">
+                    Vai quitar {quitadas.length === 1 ? 'a parcela' : 'as parcelas'} <b>{quitadas.join(', ')}</b>
+                    {quitadas.length > 1 && ' (o excedente adianta as próximas)'}
+                  </p>
+                )}
+                {principal > 0 && quitadas.length === 0 && (
+                  <p className="text-text-secondary text-xs pt-1">Pagamento parcial: nenhuma parcela fica quitada.</p>
+                )}
+                {sobra > 0.004 && (
+                  <p className="text-warning text-xs pt-1">
+                    ⚠️ {dinheiro(sobra)} acima do saldo devedor — esse excedente NÃO será aplicado.
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">Como recebeu</label>
+                <div className="flex rounded-xl overflow-hidden border border-border">
+                  {(['DINHEIRO', 'PIX'] as const).map((m) => (
+                    <button key={m} onClick={() => setMetodo(m)}
+                      className={`flex-1 px-4 py-2 text-sm font-medium transition-colors ${
+                        metodo === m ? 'bg-primary text-white' : 'text-text-muted hover:text-text-primary'
+                      }`}>
+                      {m === 'DINHEIRO' ? 'Dinheiro' : 'PIX'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-text-secondary mb-1.5">Senha de operação</label>
+                <input type="password" value={senha} onChange={(e) => setSenha(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') confirmar() }}
+                  placeholder="a mesma que você usa no financeiro" className="input-field" autoComplete="off" />
+                <p className="text-text-muted text-[11px] mt-1.5">
+                  A baixa é gravada no Parceria Financeiro, com o caixa da carteira aberto.
+                  Se o caixa estiver fechado, o sistema recusa — o valor não pode ficar fora do fechamento do dia.
+                </p>
+              </div>
+
+              <button onClick={confirmar} disabled={enviando || jurosMaior} className="btn-primary w-full flex items-center justify-center gap-2">
+                {enviando ? <><Loader2 size={15} className="animate-spin" /> Registrando…</> : `Confirmar ${dinheiro(vNum)}`}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function Linha({ rotulo, valor, forte }: { rotulo: string; valor: string; forte?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className={forte ? 'text-text-primary font-semibold' : 'text-text-muted'}>{rotulo}</span>
+      <span className={forte ? 'text-text-primary font-bold' : 'text-text-secondary'}>{valor}</span>
     </div>
   )
 }

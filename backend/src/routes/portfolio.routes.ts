@@ -47,4 +47,36 @@ router.get(
   })
 )
 
+/**
+ * Baixa de pagamento. O CRM NÃO grava dinheiro: só repassa pro financeiro, que
+ * é a fonte da verdade de saldo, caixa e transação.
+ */
+router.post(
+  '/payments',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { loanId, installmentId, amount, moraAmount, metodo, opPassword, eventoId } = req.body || {}
+    if (!loanId || !installmentId) {
+      res.status(400).json({ success: false, message: 'Informe o empréstimo e a parcela' })
+      return
+    }
+    if (!opPassword) {
+      res.status(400).json({ success: false, message: 'Confirme com sua senha de operação' })
+      return
+    }
+    if (!eventoId) {
+      res.status(400).json({ success: false, message: 'Requisição sem identificador — recarregue a tela' })
+      return
+    }
+    const data = await FinanceiroService.darBaixa(req.user!.userId, {
+      loanId, installmentId,
+      amount: Number(amount),
+      moraAmount: Number(moraAmount ?? 0),
+      metodo: metodo === 'PIX' ? 'PIX' : 'DINHEIRO',
+      opPassword: String(opPassword),
+      eventoId: String(eventoId),
+    })
+    res.json({ success: true, data })
+  })
+)
+
 export default router

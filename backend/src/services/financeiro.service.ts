@@ -46,9 +46,40 @@ function traduzErro(status: number, corpo: any): string {
       return 'Cliente não encontrado nas suas carteiras.'
     case 'email_obrigatorio':
       return 'Seu usuário está sem e-mail no CRM — não é possível consultar o financeiro.'
+    // ── baixa de pagamento ──
+    case 'caixa_fechado':
+      return corpo?.detail || 'Abra o caixa da carteira antes de dar baixa.'
+    case 'senha_invalida':
+      return corpo?.detail || 'Senha de operação incorreta.'
+    case 'fora_da_sua_carteira':
+      return 'Este empréstimo não é de uma carteira sua.'
+    case 'parcela_ja_paga':
+      return 'Esta parcela já está paga.'
+    case 'parcela_nao_encontrada':
+      return 'Parcela não encontrada.'
+    case 'emprestimo_nao_encontrado':
+      return 'Empréstimo não encontrado.'
+    case 'juros_maior_que_valor':
+      return 'O juros faz parte do valor recebido — não pode ser maior que ele.'
+    case 'valor_invalido':
+      return 'Informe um valor recebido maior que zero.'
   }
   if (status >= 500) return 'O sistema financeiro está com problema no momento. Tente de novo em instantes.'
   return `Não foi possível consultar o financeiro (erro ${status}).`
+}
+
+/**
+ * Falha de REDE (servidor fora do ar, DNS, conexão recusada). Sem isso a
+ * mensagem crua chega como "ECONNREFUSED", que o errorHandler classifica como
+ * erro interno e transforma num "Erro interno do servidor" genérico — a gerente
+ * não descobre que o problema é o financeiro estar fora.
+ */
+function ehFalhaDeRede(e: any): boolean {
+  const m = String(e?.message || '')
+  return (
+    e?.name === 'TypeError' ||
+    /ECONNREFUSED|ENOTFOUND|EAI_AGAIN|ECONNRESET|ETIMEDOUT|fetch failed|socket hang up/i.test(m)
+  )
 }
 
 async function pedir<T>(caminho: string, params: Record<string, string | undefined>): Promise<T> {
@@ -69,7 +100,8 @@ async function pedir<T>(caminho: string, params: Record<string, string | undefin
     if (!res.ok) throw new Error(traduzErro(res.status, corpo))
     return corpo as T
   } catch (e: any) {
-    if (e?.name === 'AbortError') throw new Error('O sistema financeiro não respondeu (tempo esgotado)')
+    if (e?.name === 'AbortError') throw new Error('O sistema financeiro não respondeu em tempo. Tente de novo.')
+    if (ehFalhaDeRede(e)) throw new Error('Não foi possível falar com o sistema financeiro. Avise o administrador.')
     throw e
   } finally {
     clearTimeout(t)
@@ -100,6 +132,61 @@ export class FinanceiroService {
     const email = await FinanceiroService.emailDe(userId)
     logger.info(`[Financeiro] Carteira de ${email}${walletId ? ` (carteira ${walletId})` : ''}`)
     return pedir<any>('portfolio', { email, walletId })
+  }
+
+  /**
+   * Dá baixa num pagamento. O CRM é só o mensageiro: quem escreve parcela,
+   * saldo, caixa e transação é o financeiro, dentro de uma transação só.
+   *
+   * A senha de operação passa por aqui e NÃO é gravada nem registrada em log
+   * em nenhum ponto — segue direto pro financeiro, que compara com o hash dele.
+   */
+  static async darBaixa(
+    userId: string,
+    dados: {
+      loanId: string
+      installmentId: string
+      amount: number
+      moraAmount?: number
+      metodo?: 'DINHEIRO' | 'PIX'
+      opPassword: string
+      eventoId: string
+    }
+  ) {
+    const email = await FinanceiroService.emailDe(userId)
+    const { url, key } = base()
+
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+    try {
+      const res = await fetch(`${url}/api/integration/payments`, {
+        method: 'POST',
+        headers: { 'x-integration-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...dados, email }),
+        signal: ctrl.signal,
+      })
+      const corpo = (await res.json().catch(() => null)) as any
+      if (!res.ok) throw new Error(traduzErro(res.status, corpo))
+      // Log SEM valor e SEM senha: o que interessa pra auditoria daqui é que a
+      // baixa foi pedida e por quem; o dinheiro é auditado no financeiro.
+      logger.info(`[Financeiro] Baixa registrada por ${email} (evento ${dados.eventoId})`)
+      return corpo
+    } catch (e: any) {
+      if (e?.name === 'AbortError') {
+        // Timeout numa baixa é o pior caso: pode ter sido gravada e a resposta
+        // se perdeu. A chave de idempotência garante que repetir não duplica.
+        throw new Error(
+          'O financeiro não respondeu em tempo. A baixa PODE ter sido registrada — confira no financeiro antes de tentar de novo (repetir a mesma baixa não duplica).'
+        )
+      }
+      if (ehFalhaDeRede(e)) {
+        // Aqui a baixa NÃO saiu: a conexão nem foi estabelecida.
+        throw new Error('Não foi possível falar com o sistema financeiro — a baixa NÃO foi registrada. Avise o administrador.')
+      }
+      throw e
+    } finally {
+      clearTimeout(t)
+    }
   }
 
   /** Ficha completa do cliente. Casa por CPF; telefone é fallback. */
