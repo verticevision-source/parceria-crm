@@ -57,7 +57,7 @@ export default function App() {
     <Routes>
       <Route
         path="/login"
-        element={user ? <Navigate to="/dashboard" replace /> : <Login />}
+        element={user ? <Navigate to="/attendance" replace /> : <Login />}
       />
 
       {/* Público: link de conexão de WhatsApp (sem login) */}
@@ -70,7 +70,9 @@ export default function App() {
           </PrivateRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        {/* Abre no Atendimento: é onde a equipe vive, e no celular o Dashboard
+            era uma tela de passagem que obrigava a navegar antes de trabalhar. */}
+        <Route index element={<Navigate to="/attendance" replace />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/attendance" element={<Attendance />} />
         <Route path="/crm" element={<VendaRoute><CRM /></VendaRoute>} />
@@ -165,7 +167,7 @@ export default function App() {
         />
       </Route>
 
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      <Route path="*" element={<Navigate to="/attendance" replace />} />
     </Routes>
   )
 }

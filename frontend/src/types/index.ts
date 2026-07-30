@@ -110,6 +110,8 @@ export interface Message {
   longitude?: number
   externalMessageId?: string
   sentAt?: string
+  /** Só no cliente: bolha otimista, ainda não confirmada pelo servidor. */
+  pending?: boolean
   createdAt: string
   contact?: Contact
 }

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
+import BottomNav from './BottomNav'
 import Logo from '../Logo'
 
 export default function Layout() {
@@ -17,12 +18,14 @@ export default function Layout() {
           className="md:hidden flex items-center gap-3 px-4 h-14 flex-shrink-0 border-b"
           style={{ background: '#0a0f1e', borderColor: '#1e2d4a' }}
         >
+          {/* 44x44 é o alvo mínimo confortável de toque; antes eram 34px e
+              errar o botão no celular era comum. */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="text-text-secondary hover:text-text-primary p-1.5 rounded-lg hover:bg-bg-hover"
+            className="text-text-secondary hover:text-text-primary rounded-lg hover:bg-bg-hover flex items-center justify-center w-11 h-11 -ml-1.5"
             aria-label="Abrir menu"
           >
-            <Menu size={22} />
+            <Menu size={24} />
           </button>
           <div className="flex items-center gap-2">
             <Logo size={28} />
@@ -36,9 +39,12 @@ export default function Layout() {
           </div>
         </header>
 
-        <main className="flex-1 overflow-auto" style={{ background: '#080d17' }}>
+        <main className="flex-1 overflow-auto min-h-0" style={{ background: '#080d17' }}>
           <Outlet />
         </main>
+
+        {/* Navegação na zona do polegar. O menu no topo é inalcançável de uma mão. */}
+        <BottomNav onAbrirMenu={() => setSidebarOpen(true)} />
       </div>
     </div>
   )

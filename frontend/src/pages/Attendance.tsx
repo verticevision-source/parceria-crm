@@ -396,22 +396,42 @@ export default function Attendance() {
   const sendMessage = async () => {
     if (!input.trim() || !selected || sending) return
     const body = input.trim()
+    const conv = selected
     setInput('')
     setSending(true)
+
+    // A bolha aparece NA HORA, antes da resposta do servidor. Enviar pelo
+    // celular passa por CRM → Evolution → WhatsApp; esperar essa volta pra
+    // mostrar o que a pessoa acabou de escrever faz a tela parecer travada, e
+    // ela reenvia achando que não foi.
+    const tempId = `tmp-${Date.now()}`
+    const agora = new Date().toISOString()
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: tempId, conversationId: conv.id, userId: '', whatsappSessionId: '',
+        direction: 'OUT', type: 'TEXT', textBody: body,
+        createdAt: agora, sentAt: agora, pending: true,
+      } as Message,
+    ])
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conv.id ? { ...c, lastMessage: body, lastMessageAt: agora } : c))
+    )
+
     try {
       // Não checamos a sessão da CONVERSA (pode ser antiga/desconectada após
       // reconexão). O backend escolhe a sessão conectada do dono e erra com
       // mensagem clara se não houver nenhuma.
-      await whatsappApi.sendMessage(selected.contact?.phone || '', body)
-      setConversations((prev) =>
-        prev.map((c) =>
-          c.id === selected.id
-            ? { ...c, lastMessage: body, lastMessageAt: new Date().toISOString() }
-            : c
-        )
+      const res = await whatsappApi.sendMessage(conv.contact?.phone || '', body)
+      const real = res?.data?.data as Message | undefined
+      // Troca a provisória pela real (mesmo id do servidor). Assim o evento do
+      // socket, que dedupe por id, não cria uma segunda bolha.
+      setMessages((prev) =>
+        prev.map((m) => (m.id === tempId ? (real ? { ...real } : ({ ...m, pending: false } as Message)) : m))
       )
     } catch (e: any) {
       toast.error(e?.response?.data?.message || 'Erro ao enviar mensagem')
+      setMessages((prev) => prev.filter((m) => m.id !== tempId))
       setInput(body)
     } finally {
       setSending(false)
@@ -1145,8 +1165,11 @@ export default function Attendance() {
                       ) : !msg.mediaUrl && msg.type !== 'AUDIO' && msg.type !== 'LOCATION' ? (
                         <p className="text-sm leading-relaxed opacity-60">[mídia]</p>
                       ) : null}
-                      <p className={`text-xs mt-1 ${msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'}`}>
+                      <p className={`text-xs mt-1 flex items-center gap-1 ${msg.direction === 'OUT' ? 'text-white/60' : 'text-text-muted'}`}>
                         {msg.sentAt ? format(new Date(msg.sentAt), 'HH:mm') : format(new Date(msg.createdAt), 'HH:mm')}
+                        {/* Relógio enquanto o servidor não confirma: a pessoa vê
+                            que saiu da mão dela e não reenvia por insegurança. */}
+                        {msg.pending && <Clock size={11} className="animate-pulse" />}
                       </p>
                     </div>
                   </div>
@@ -1338,7 +1361,7 @@ export default function Attendance() {
                       }
                     }}
                     placeholder="Digite uma mensagem..."
-                    className="input-field flex-1 resize-none min-h-[48px] max-h-44 py-3 px-4 text-base"
+                    className="input-field flex-1 resize-none min-h-[56px] sm:min-h-[48px] max-h-44 py-4 sm:py-3 px-4 text-base leading-snug"
                     rows={1}
                     disabled={sending}
                     style={{ height: 'auto', lineHeight: '1.5' }}
