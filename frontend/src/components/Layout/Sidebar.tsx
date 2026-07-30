@@ -140,12 +140,12 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
                 ) : 'Atendente'}
               </p>
             </div>
-            {/* Fechar (mobile) */}
+            {/* Fechar (mobile) — 44x44: alvo de polegar, antes eram 28px */}
             <button
               onClick={onClose}
-              className="md:hidden text-text-muted hover:text-text-primary p-1"
+              className="md:hidden text-text-muted hover:text-text-primary flex items-center justify-center w-11 h-11 -mr-2 rounded-lg"
             >
-              <X size={20} />
+              <X size={22} />
             </button>
           </div>
 

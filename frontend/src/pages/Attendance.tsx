@@ -857,7 +857,7 @@ export default function Attendance() {
                 onClick={handleRouletteToggle}
                 disabled={rouletteToggling}
                 title={rouletteActive ? 'Sair da roleta de leads' : 'Entrar na roleta de leads'}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                className={`flex items-center gap-1.5 px-3 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 rounded-lg text-xs font-medium transition-all ${
                   rouletteActive
                     ? 'bg-green-500 hover:bg-green-600 text-white'
                     : 'bg-bg-tertiary hover:bg-bg-secondary text-text-muted hover:text-text-primary border border-border'
