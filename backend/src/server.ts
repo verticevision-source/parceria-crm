@@ -74,6 +74,16 @@ import('./services/scheduledMessage.service')
   .then(({ ScheduledMessageService }) => ScheduledMessageService.start())
   .catch((e) => logger.error('[scheduler] falha ao iniciar:', e))
 
+// Respostas da IA que o reinício apagou. Os temporizadores vivem em memória, e
+// quem escreveu durante um deploy ficava sem resposta e sem erro em log — um
+// deploy meu deixou uma cliente esperando 10 minutos de madrugada. O atraso de
+// 20s é pra Evolution/webhook já estarem de pé antes de tentar enviar.
+setTimeout(() => {
+  import('./services/aiBot.service')
+    .then(({ AIBotService }) => AIBotService.recuperarPendentes())
+    .catch((e) => logger.error('[IA-bot] falha na recuperação pós-reinício:', e))
+}, 20000)
+
 httpServer.listen(PORT, () => {
   logger.info(`🚀 Servidor rodando na porta ${PORT}`)
   logger.info(`📡 Socket.IO ativo`)

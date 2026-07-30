@@ -55,6 +55,11 @@ const DEBOUNCE_MS = num(process.env.AI_BOT_DEBOUNCE_MS, 6000)
 // Teto: se o cliente não para de digitar, responde de qualquer forma.
 const MAX_WAIT_MS = num(process.env.AI_BOT_MAX_WAIT_MS, 20000)
 const MAX_PER_CONVERSATION = num(process.env.AI_BOT_MAX_REPLIES_PER_CONVERSATION, 25)
+// Recuperação pós-reinício: janela do que ainda vale responder, teto de quantos
+// e espaço entre um envio e outro (rajada é padrão de bloqueio de chip).
+const JANELA_RECUPERACAO_MS = num(process.env.AI_BOT_RECOVERY_WINDOW_MS, 3 * 60 * 60 * 1000)
+const MAX_RECUPERACAO = num(process.env.AI_BOT_RECOVERY_MAX, 40)
+const ESPACO_RECUPERACAO_MS = num(process.env.AI_BOT_RECOVERY_SPACING_MS, 8000)
 // Teto diário: anti-runaway, não orçamento. Subiu de 300 pra 2000 quando a IA
 // passou a receber TODOS os leads — com ~100 clientes/dia e 6 a 10 respostas
 // por conversa, 300 acabava no meio da tarde e ela emudecia com o cliente
@@ -155,6 +160,61 @@ export class AIBotService {
   static async botUserId(): Promise<string | null> {
     const cfg = await AIBotService.getCfg()
     return cfg?.botUserId ?? null
+  }
+
+  /**
+   * Recupera respostas perdidas num REINÍCIO do servidor.
+   *
+   * Os temporizadores de resposta vivem em memória (`pending`). Qualquer
+   * reinício — deploy, queda, a plataforma movendo a instância — apaga o que
+   * estava agendado, e o cliente que escreveu naquela janela fica sem resposta
+   * SEM erro nenhum em log. Aconteceu de verdade: um deploy meu no meio de uma
+   * conversa deixou a cliente esperando 10 minutos de madrugada.
+   *
+   * Então, na subida, procuramos conversas da IA em que a ÚLTIMA mensagem é do
+   * cliente e reagendamos. Espaçado, não em rajada: 100 respostas saindo no
+   * mesmo segundo é padrão de bloqueio de chip.
+   */
+  static async recuperarPendentes(): Promise<void> {
+    try {
+      const cfg = await AIBotService.getCfg()
+      if (!cfg?.enabled || !cfg?.botEnabled || !cfg?.botUserId) return
+
+      // Janela: mensagem velha demais não vale resposta automática — o cliente
+      // já desistiu, e uma resposta fora de hora parece robô perdido no tempo.
+      const desde = new Date(Date.now() - JANELA_RECUPERACAO_MS)
+
+      const convs = await prisma.conversation.findMany({
+        where: {
+          userId: cfg.botUserId,
+          aiPaused: false,
+          status: { not: 'CLOSED' },
+          lastMessageAt: { gte: desde },
+        },
+        select: {
+          id: true,
+          whatsappSessionId: true,
+          contact: { select: { phone: true } },
+          messages: { take: 1, orderBy: { createdAt: 'desc' }, select: { direction: true } },
+        },
+        orderBy: { lastMessageAt: 'asc' },
+        take: MAX_RECUPERACAO,
+      })
+
+      const alvos = convs.filter(
+        (c) => c.messages[0]?.direction === 'IN' && c.whatsappSessionId && c.contact?.phone
+      )
+      if (alvos.length === 0) return
+
+      logger.warn(`[IA-bot] Reinício: ${alvos.length} cliente(s) esperando resposta — reagendando`)
+      alvos.forEach((c, i) => {
+        setTimeout(() => {
+          void AIBotService.run(c.id, c.whatsappSessionId!, c.contact!.phone)
+        }, i * ESPACO_RECUPERACAO_MS)
+      })
+    } catch (e: any) {
+      logger.error(`[IA-bot] Falha ao recuperar pendentes: ${e?.message}`)
+    }
   }
 
   /**
