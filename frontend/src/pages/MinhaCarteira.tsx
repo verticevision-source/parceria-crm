@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Wallet, AlertCircle, Loader2, Search, MessageCircle, X, AlertTriangle } from 'lucide-react'
 import { portfolioApi } from '../services/api'
+import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import toast from 'react-hot-toast'
 
@@ -45,6 +46,7 @@ const paraWhats = (tel: string) => {
 
 export default function MinhaCarteira() {
   const { isAdmin } = useAuth()
+  const navigate = useNavigate()
   const [dados, setDados] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -52,6 +54,13 @@ export default function MinhaCarteira() {
   const [filtro, setFiltro] = useState<'atrasados' | 'todos'>('atrasados')
   const [aberto, setAberto] = useState<Cliente | null>(null)
   const [cobrando, setCobrando] = useState<Cliente | null>(null)
+
+  // Leva pro Atendimento já com a conversa do cliente aberta, em vez de sair
+  // do CRM pro app do WhatsApp.
+  const abrirConversaNoCrm = (telefone: string) => {
+    const digitos = String(telefone || '').replace(/\D/g, '')
+    navigate(`/attendance?phone=${digitos}`)
+  }
 
   const recarregar = () => {
     portfolioApi
@@ -166,7 +175,8 @@ export default function MinhaCarteira() {
           ) : (
             <div className="space-y-2">
               {lista.map((c) => (
-                <LinhaCliente key={c.loanId} c={c} onAbrir={() => setAberto(c)} onCobrar={() => setCobrando(c)} />
+                <LinhaCliente key={c.loanId} c={c} onAbrir={() => setAberto(c)} onCobrar={() => setCobrando(c)}
+                  onAbrirConversa={() => abrirConversaNoCrm(c.cliente.telefone)} />
               ))}
             </div>
           )}
@@ -191,8 +201,7 @@ function Cartao({ rotulo, valor, alerta }: { rotulo: string; valor: string; aler
   )
 }
 
-function LinhaCliente({ c, onAbrir, onCobrar }: { c: Cliente; onAbrir: () => void; onCobrar: () => void }) {
-  const zap = paraWhats(c.cliente.telefone)
+function LinhaCliente({ c, onAbrir, onCobrar, onAbrirConversa }: { c: Cliente; onAbrir: () => void; onCobrar: () => void; onAbrirConversa: () => void }) {
   return (
     <div
       className="p-3 sm:p-4 rounded-xl border bg-bg-secondary flex items-start gap-3"
@@ -214,27 +223,23 @@ function LinhaCliente({ c, onAbrir, onCobrar }: { c: Cliente; onAbrir: () => voi
         <p className="text-text-muted text-[11px] mt-0.5 truncate">{c.walletName} · {c.cliente.telefone}</p>
       </button>
       <div className="flex flex-col gap-1.5 flex-shrink-0">
-        {/* Cobrar PELO SISTEMA: sai do numero da carteira e fica registrado.
-            O wa.me abaixo sai do celular pessoal e nao deixa rastro — fica como
-            alternativa, nao como caminho principal. */}
         <button
           onClick={onCobrar}
           title="Cobrar pelo número da carteira (fica registrado)"
-          className="px-2.5 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-[11px] font-semibold transition-colors whitespace-nowrap"
+          className="px-3 py-2 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-[11px] font-semibold transition-colors whitespace-nowrap min-h-[44px] sm:min-h-0"
         >
           Cobrar
         </button>
-        {zap && (
-          <a
-            href={`https://wa.me/${zap}`}
-            target="_blank"
-            rel="noreferrer"
-            title="Abrir no seu WhatsApp pessoal (não fica registrado)"
-            className="p-1.5 rounded-lg bg-bg-tertiary text-text-muted hover:text-success transition-colors flex items-center justify-center"
-          >
-            <MessageCircle size={14} />
-          </a>
-        )}
+        {/* Abre a conversa DENTRO do CRM. Antes era um link wa.me que jogava a
+            pessoa pro app do WhatsApp: perdia o CRM de vista, e o que fosse
+            conversado lá não ficava registrado em lugar nenhum. */}
+        <button
+          onClick={onAbrirConversa}
+          title="Abrir a conversa no CRM"
+          className="rounded-lg bg-bg-tertiary text-text-muted hover:text-success transition-colors flex items-center justify-center w-11 h-11 sm:w-8 sm:h-8"
+        >
+          <MessageCircle size={16} />
+        </button>
       </div>
     </div>
   )

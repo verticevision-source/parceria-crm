@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, Fragment } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   Search, Send, CheckCircle, Clock, X, User,
   Phone, MapPin, Briefcase, ChevronRight, MessageSquare,
@@ -160,6 +161,11 @@ export default function Attendance() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<string>('')
   const [sending, setSending] = useState(false)
+  // Corrente de promessas: garante ordem de envio sem travar a digitação.
+  const filaEnvio = useRef<Promise<any>>(Promise.resolve())
+  // Telefone vindo de outra tela (?phone=): abre a conversa direto, uma vez só.
+  const [params, setParams] = useSearchParams()
+  const jaAbriuPeloLink = useRef(false)
   const [loadingConversations, setLoadingConversations] = useState(true)
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [, setSlaTick] = useState(0) // força recálculo do SLA a cada 60s
@@ -394,10 +400,13 @@ export default function Attendance() {
   }
 
   const sendMessage = async () => {
-    if (!input.trim() || !selected || sending) return
+    if (!input.trim() || !selected) return
     const body = input.trim()
     const conv = selected
     setInput('')
+    // NÃO bloqueia o campo. Antes o textarea ficava `disabled` durante o envio
+    // e a pessoa tinha que esperar cada mensagem sair pra digitar a próxima —
+    // no celular, com 3 ou 4 frases seguidas, isso trava a conversa toda.
     setSending(true)
 
     // A bolha aparece NA HORA, antes da resposta do servidor. Enviar pelo
@@ -422,7 +431,11 @@ export default function Attendance() {
       // Não checamos a sessão da CONVERSA (pode ser antiga/desconectada após
       // reconexão). O backend escolhe a sessão conectada do dono e erra com
       // mensagem clara se não houver nenhuma.
-      const res = await whatsappApi.sendMessage(conv.contact?.phone || '', body)
+      // Fila: as mensagens saem NA ORDEM em que foram digitadas. Sem isso, duas
+      // enviadas juntas podem chegar invertidas no WhatsApp do cliente.
+      const res = await (filaEnvio.current = filaEnvio.current
+        .catch(() => {})
+        .then(() => whatsappApi.sendMessage(conv.contact?.phone || '', body)))
       const real = res?.data?.data as Message | undefined
       // Troca a provisória pela real (mesmo id do servidor). Assim o evento do
       // socket, que dedupe por id, não cria uma segunda bolha.
@@ -828,6 +841,28 @@ export default function Attendance() {
       toast.error(e?.response?.data?.message || 'Não foi possível enviar a ficha', { duration: 7000 })
     } finally { setEnviandoFichaCliente(false) }
   }
+
+  // Deep-link ?phone=: quando a lista carrega, seleciona a conversa daquele
+  // telefone. Casa pelos últimos 10 dígitos porque o CRM guarda com DDI e o
+  // financeiro sem — comparar string crua nunca acha.
+  useEffect(() => {
+    if (jaAbriuPeloLink.current || conversations.length === 0) return
+    const alvo = (params.get('phone') || '').replace(/\D/g, '')
+    if (!alvo) return
+    const achou = conversations.find((c) => {
+      const d = String(c.contact?.phone || '').replace(/\D/g, '')
+      return d.length >= 8 && (d.endsWith(alvo.slice(-10)) || alvo.endsWith(d.slice(-10)))
+    })
+    jaAbriuPeloLink.current = true
+    if (achou) {
+      void selectConversation(achou)
+    } else {
+      toast.error('Não achei uma conversa com esse cliente ainda. Use o botão Cobrar para começar.')
+    }
+    // Limpa o parâmetro pra um F5 não reabrir a conversa sozinho.
+    params.delete('phone')
+    setParams(params, { replace: true })
+  }, [conversations])
 
   const filtered = conversations.filter((c) => {
     const name = (c.contact?.name || c.contact?.phone || '').toLowerCase()
@@ -1361,9 +1396,8 @@ export default function Attendance() {
                       }
                     }}
                     placeholder="Digite uma mensagem..."
-                    className="input-field flex-1 resize-none min-h-[56px] sm:min-h-[48px] max-h-44 py-4 sm:py-3 px-4 text-base leading-snug"
+                    className="input-field flex-1 resize-none min-h-[68px] sm:min-h-[52px] max-h-44 py-4 sm:py-3 px-4 text-[17px] sm:text-base leading-relaxed rounded-2xl"
                     rows={1}
-                    disabled={sending}
                     style={{ height: 'auto', lineHeight: '1.5' }}
                     onInput={(e) => {
                       const t = e.target as HTMLTextAreaElement
