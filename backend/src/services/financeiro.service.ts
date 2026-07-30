@@ -215,6 +215,40 @@ export class FinanceiroService {
     return { ok: false }
   }
 
+  /**
+   * Link para o CLIENTE atualizar a ficha dele.
+   *
+   * Nada a ver com o `fichaLink` do vendedor: aquele é de CAPTAÇÃO e faz quem
+   * preenche virar lead de quem mandou. Este é do cliente que JÁ existe — é o
+   * que a gerente de carteira precisa mandar pra quem ela cobra.
+   */
+  static async linkAtualizacaoCliente(
+    userId: string,
+    chave: { id?: string; cpf?: string; phone?: string }
+  ) {
+    const email = await FinanceiroService.emailDe(userId)
+    const { url, key } = base()
+    const ctrl = new AbortController()
+    const t = setTimeout(() => ctrl.abort(), TIMEOUT_MS)
+    try {
+      const res = await fetch(`${url}/api/integration/borrower-update-link`, {
+        method: 'POST',
+        headers: { 'x-integration-key': key, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...chave, email }),
+        signal: ctrl.signal,
+      })
+      const corpo = (await res.json().catch(() => null)) as any
+      if (!res.ok) throw new Error(traduzErro(res.status, corpo))
+      return corpo as { cliente: { id: string; nome: string }; link: string; renovado: boolean }
+    } catch (e: any) {
+      if (e?.name === 'AbortError') throw new Error('O sistema financeiro não respondeu em tempo. Tente de novo.')
+      if (ehFalhaDeRede(e)) throw new Error('Não foi possível falar com o sistema financeiro. Avise o administrador.')
+      throw e
+    } finally {
+      clearTimeout(t)
+    }
+  }
+
   /** Ficha completa do cliente. Casa por CPF; telefone é fallback. */
   static async fichaCliente(
     userId: string,

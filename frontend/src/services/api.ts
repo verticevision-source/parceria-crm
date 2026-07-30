@@ -67,6 +67,9 @@ export const portfolioApi = {
   }) => api.post('/portfolio/payments', dados),
   cobrar: (dados: { phone: string; body: string; walletId?: string }) =>
     api.post('/portfolio/collect', dados),
+  /** Link do CLIENTE atualizar a ficha dele (com envio opcional). */
+  enviarFichaAtualizacao: (dados: { id?: string; cpf?: string; phone?: string; enviar?: boolean }) =>
+    api.post('/portfolio/borrower-update-link', dados),
   setWalletSession: (linkId: string, sessionId: string | null) =>
     api.patch(`/portfolio/wallets/${linkId}/session`, { sessionId }),
 }

@@ -116,6 +116,43 @@ router.post(
   })
 )
 
+/**
+ * Link para o cliente atualizar a ficha DELE — e, opcionalmente, já envia.
+ * É o que a gerente de carteira usa: ela cuida de quem já é cliente, então o
+ * link de captação do vendedor não serve pra ela.
+ */
+router.post(
+  '/borrower-update-link',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { id, cpf, phone, enviar } = req.body || {}
+    if (!id && !cpf && !phone) {
+      res.status(400).json({ success: false, message: 'Informe o cliente (id, CPF ou telefone)' })
+      return
+    }
+    const r = await FinanceiroService.linkAtualizacaoCliente(req.user!.userId, { id, cpf, phone })
+
+    let enviada = false
+    if (enviar && phone) {
+      const dono = await FinanceiroService.clienteDaMinhaCarteira(req.user!.userId, String(phone))
+      if (!dono.ok) {
+        res.status(403).json({ success: false, message: 'Este telefone não é de um cliente das suas carteiras' })
+        return
+      }
+      const sessionId = await PortfolioService.sessionParaCobranca(req.user!.userId, dono.walletId)
+      const primeiro = (r.cliente?.nome || '').trim().split(/\s+/)[0]
+      const texto =
+        `Oi${primeiro ? ` ${primeiro}` : ''}, tudo bem?\n\n` +
+        `Para manter seu cadastro em dia, atualize seus dados neste link:\n${r.link}\n\n` +
+        `Qualquer dúvida me chama por aqui.`
+      const { WhatsAppService } = await import('../services/whatsapp.service')
+      await WhatsAppService.sendFromSession(sessionId, String(phone), texto, { humanPainel: true })
+      enviada = true
+    }
+
+    res.json({ success: true, data: { ...r, enviada } })
+  })
+)
+
 /** Admin: amarra um número de WhatsApp à carteira. */
 router.patch(
   '/wallets/:linkId/session',

@@ -5,7 +5,7 @@ import {
   Smile, Paperclip, Mic, MicOff, Zap, Tag, Volume2, Shuffle, Sparkles, Trash2, PhoneCall, FileText,
   Archive, ArchiveRestore, MoreVertical, Hand
 } from 'lucide-react'
-import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi } from '../services/api'
+import { conversationsApi, leadsApi, whatsappApi, quickRepliesApi, aiApi, api, callsApi, schedulesApi, portfolioApi } from '../services/api'
 import { getSocket } from '../services/socket'
 import { useAuth } from '../contexts/AuthContext'
 import { Conversation, Message, QuickReply } from '../types'
@@ -150,7 +150,7 @@ function ConversationItem({
 // Main
 // ─────────────────────────────────────────────
 export default function Attendance() {
-  const { user, isAdmin } = useAuth()
+  const { user, isAdmin, isGerente } = useAuth()
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [selected, setSelected] = useState<Conversation | null>(null)
   const [messages, setMessages] = useState<Message[]>([])
@@ -783,7 +783,8 @@ export default function Attendance() {
     finally { setSavingCall(false) }
   }
 
-  // Enviar o link da ficha do vendedor (Parceria Financeira)
+  // Ficha de CAPTAÇÃO do vendedor: quem preenche vira lead dele. Não serve pro
+  // gerente de carteira, que cuida de quem JÁ é cliente.
   const sendFicha = async () => {
     if (!user?.fichaLink) { toast.error('Seu link de ficha não está configurado. Peça ao admin para cadastrar.'); return }
     if (!selected?.contact?.phone) return
@@ -791,6 +792,21 @@ export default function Attendance() {
       await whatsappApi.sendMessage(selected.contact.phone, `Olá! Para dar continuidade ao seu atendimento, preencha sua ficha pelo link: ${user.fichaLink}`)
       toast.success('Ficha enviada!')
     } catch { toast.error('Erro ao enviar a ficha') }
+  }
+
+  // Ficha de ATUALIZAÇÃO daquele cliente: link individual dele, gerado no
+  // financeiro. É a ação do gerente de carteira — pedir dados atualizados de
+  // quem ele cobra, sem transformar o cliente em lead de ninguém.
+  const [enviandoFichaCliente, setEnviandoFichaCliente] = useState(false)
+  const sendFichaDoCliente = async () => {
+    if (!selected?.contact?.phone || enviandoFichaCliente) return
+    setEnviandoFichaCliente(true)
+    try {
+      const r = await portfolioApi.enviarFichaAtualizacao({ phone: selected.contact.phone, enviar: true })
+      toast.success(`Ficha de ${r.data.data?.cliente?.nome || 'atualização'} enviada`)
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Não foi possível enviar a ficha', { duration: 7000 })
+    } finally { setEnviandoFichaCliente(false) }
   }
 
   const filtered = conversations.filter((c) => {
@@ -1424,7 +1440,14 @@ export default function Attendance() {
             )}
 
             <div className="mt-5 space-y-2">
-              {user?.fichaLink && (
+              {isGerente ? (
+                <button onClick={sendFichaDoCliente} disabled={enviandoFichaCliente}
+                  title="Envia o link individual deste cliente para ele atualizar os dados"
+                  className="w-full btn-ghost border border-border flex items-center justify-center gap-2 text-sm text-primary disabled:opacity-50">
+                  <FileText size={16} />
+                  {enviandoFichaCliente ? 'Enviando...' : 'Enviar ficha de atualização'}
+                </button>
+              ) : user?.fichaLink && (
                 <button onClick={sendFicha} className="w-full btn-ghost border border-border flex items-center justify-center gap-2 text-sm text-primary">
                   <FileText size={16} />
                   Enviar minha ficha
