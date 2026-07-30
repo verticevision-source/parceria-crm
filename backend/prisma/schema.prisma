@@ -631,6 +631,11 @@ model ChatFlowSession {
   contactId      String
   currentNodeId  String?
   status         String    @default("running")  // running | waiting | done
+  // Só importa quando status='done': por que parou. 'timeout' = cliente
+  // sumiu (silêncio real, pode reabrir do zero); 'finished'/'handoff' =
+  // chegou ao fim ou pediu humano (não reabre sozinho por qualquer mensagem
+  // fora do fluxo — só via timeout de verdade).
+  doneReason     String?
   lastReply      String?
   vars           Json?     // respostas capturadas (ex: {"city":"Rio Preto","modality":"1","weeklyOffered":true})
   waitingSince   DateTime?

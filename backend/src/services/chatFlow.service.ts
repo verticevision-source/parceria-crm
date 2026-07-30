@@ -438,7 +438,7 @@ Cliente: ${phone}`)
 
       if (t === 'handoff') {
         if (node.data.text) await enviar(node.data.text)
-        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
+        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId, doneReason: 'handoff' } })
         // Encaminha para a roleta (time específico se node.data.teamId)
         try {
           const { RouletteService } = await import('./roulette.service')
@@ -458,7 +458,7 @@ Cliente: ${phone}`)
       // Encaminha para a roleta da CIDADE (casa a última resposta com um time)
       if (t === 'cityHandoff') {
         if (node.data.text) await enviar(node.data.text)
-        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
+        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId, doneReason: 'handoff' } })
         try {
           const { RouletteService } = await import('./roulette.service')
           await RouletteService.distributeToCity({
@@ -502,7 +502,7 @@ Cliente: ${phone}`)
 
       // ── Roteia conforme cidade + modalidade (nota interna, msg, Kanban) ──
       if (t === 'cityRoute') {
-        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId } })
+        await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: currentId, doneReason: 'handoff' } })
         await ChatFlowService.runCityRoute(node, session, userId, phone)
         return
       }
@@ -513,7 +513,7 @@ Cliente: ${phone}`)
     }
 
     // Fim do fluxo sem handoff
-    await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: null } })
+    await prisma.chatFlowSession.update({ where: { id: sessionId }, data: { status: 'done', currentNodeId: null, doneReason: 'finished' } })
   }
 
   // ── Lógica do nó cityRoute: interpreta modalidade + cidade e roteia ──────────
@@ -804,7 +804,7 @@ Cliente: ${phone}`)
       if (f?.timeoutAction === 'reiniciar') {
         await prisma.chatFlowSession.update({
           where: { id: s.id },
-          data: { status: 'done', currentNodeId: null },
+          data: { status: 'done', currentNodeId: null, doneReason: 'timeout' },
         }).catch(() => {})
         logger.info(`[Flow] Timeout ${janela}min: menu vai reiniciar na próxima msg (conv=${s.conversationId})`)
         continue
@@ -817,7 +817,7 @@ Cliente: ${phone}`)
   /** Encerra e joga no Kanban — comportamento do robô de qualificação. */
   private static async encerrarPorTimeout(s: { id: string; conversationId: string; contactId: string }, janela: number): Promise<void> {
     {
-      await prisma.chatFlowSession.update({ where: { id: s.id }, data: { status: 'done' } })
+      await prisma.chatFlowSession.update({ where: { id: s.id }, data: { status: 'done', doneReason: 'timeout' } })
       try {
         const conv = await prisma.conversation.findUnique({ where: { id: s.conversationId }, select: { userId: true } })
         const stageId = await ChatFlowService.ensureStage('Não respondeu', '#a1a1aa')
@@ -836,16 +836,24 @@ Cliente: ${phone}`)
     const session = await prisma.chatFlowSession.findUnique({ where: { conversationId } })
     if (!session || session.status !== 'done') return false
 
-    // Robô de MENU (timeoutAction 'reiniciar'): reinicia sempre, qualquer que
-    // seja o nó onde parou — a graça do menu é justamente recomeçar.
     const flow = await prisma.chatFlow.findUnique({
       where: { id: session.flowId },
       select: { timeoutAction: true },
     })
     const ehMenu = flow?.timeoutAction === 'reiniciar'
 
-    // Robô de QUALIFICAÇÃO: só reengata quem estourou numa pergunta.
-    if (!ehMenu && session.currentNodeId !== 'q_city' && session.currentNodeId !== 'q_mod') return false
+    if (ehMenu) {
+      // 'done' por si só não basta. O defeito relatado era exatamente isto:
+      // cliente terminava o menu ou pedia pra falar com alguém (doneReason
+      // 'finished'/'handoff'), e QUALQUER mensagem fora do fluxo depois disso
+      // — "ok", "obrigado", um emoji — reabria o menu do zero e mandava a
+      // mensagem de abertura de novo. Só reabre sozinho quando a sessão morreu
+      // de silêncio de verdade ('timeout', via processTimeouts).
+      if (session.doneReason !== 'timeout') return false
+    } else {
+      // Robô de QUALIFICAÇÃO: só reengata quem estourou numa pergunta.
+      if (session.currentNodeId !== 'q_city' && session.currentNodeId !== 'q_mod') return false
+    }
 
     await prisma.chatFlowSession.delete({ where: { id: session.id } }).catch(() => {})
     return ChatFlowService.startForConversation(conversationId, contactId, userId, phone, sessionId)
@@ -862,10 +870,17 @@ Cliente: ${phone}`)
     const flow = await ChatFlowService.flowForSession(sessionId, userId)
     if (!flow || (flow as any).timeoutAction !== 'reiniciar') return false
 
+    // Só age quando NUNCA existiu sessão de robô nesta conversa (cliente de
+    // antes do robô existir). Sessão 'done' já é decisão do
+    // maybeRestartAfterReply — repetir aqui reabriria o menu por cima do que
+    // ele acabou de decidir não reabrir.
     const existente = await prisma.chatFlowSession.findUnique({ where: { conversationId } })
-    // 'waiting' já foi tratado pelo handleInbound; 'running' está no meio de um passo.
-    if (existente && existente.status !== 'done') return false
-    if (existente) await prisma.chatFlowSession.delete({ where: { id: existente.id } }).catch(() => {})
+    if (existente) return false
+
+    // Roberto já está atendendo esta conversa manualmente: não empurra o menu
+    // por cima de um atendimento humano em andamento.
+    const conversation = await prisma.conversation.findUnique({ where: { id: conversationId }, select: { aiPaused: true } })
+    if (conversation?.aiPaused) return false
 
     return ChatFlowService.startForConversation(conversationId, contactId, userId, phone, sessionId)
   }
