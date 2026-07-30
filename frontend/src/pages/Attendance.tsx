@@ -938,7 +938,7 @@ export default function Attendance() {
               {/* Voltar (mobile) */}
               <button
                 onClick={() => setSelected(null)}
-                className="md:hidden text-text-muted hover:text-text-primary p-1 -ml-1 flex-shrink-0"
+                className="md:hidden text-text-muted hover:text-text-primary flex items-center justify-center w-11 h-11 -ml-2 rounded-lg flex-shrink-0"
                 title="Voltar"
               >
                 <ChevronRight size={20} className="rotate-180" />
@@ -974,7 +974,7 @@ export default function Attendance() {
                     title={aiPaused
                       ? 'Você está respondendo. Clique para devolver para a IA.'
                       : 'A IA responde sozinha aqui. Clique para assumir você.'}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors ${
+                    className={`flex items-center gap-1.5 px-3 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 rounded-lg text-xs font-semibold transition-colors ${
                       aiPaused
                         ? 'bg-warning/15 text-warning border border-warning/40'
                         : 'bg-primary text-white'
@@ -986,7 +986,7 @@ export default function Attendance() {
                   <button
                     onClick={toggleAiAuto}
                     title="Ligar resposta automática da IA nesta conversa"
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-colors bg-bg-tertiary text-text-muted hover:text-text-primary border border-border"
+                    className="flex items-center gap-1 px-3 py-2.5 sm:py-1 min-h-[44px] sm:min-h-0 rounded-lg text-xs font-medium transition-colors bg-bg-tertiary text-text-muted hover:text-text-primary border border-border"
                   >
                     <Sparkles size={13} /> IA
                   </button>
@@ -996,7 +996,7 @@ export default function Attendance() {
                     soltos sem texto, indecifráveis (e apertados no celular). */}
                 <div className="relative">
                   <button onClick={() => setShowActions((v) => !v)} title="Ações da conversa"
-                    className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors">
+                    className="flex items-center justify-center w-11 h-11 rounded-lg hover:bg-bg-hover text-text-muted hover:text-text-primary transition-colors">
                     <MoreVertical size={18} />
                   </button>
                   {showActions && (
@@ -1276,7 +1276,7 @@ export default function Attendance() {
                   <button
                     data-emoji-btn
                     onClick={() => { setShowEmojiPicker((v) => !v); setShowQuickReplies(false); setShowAttachMenu(false) }}
-                    className={`p-2.5 rounded-xl transition-colors flex-shrink-0 ${
+                    className={`p-3 rounded-xl transition-colors flex-shrink-0 ${
                       showEmojiPicker ? 'bg-primary/20 text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
                     }`}
                     title="Emoji"
@@ -1327,7 +1327,7 @@ export default function Attendance() {
                       data-attach-btn
                       onClick={() => { setShowAttachMenu((v) => !v); setShowEmojiPicker(false); setShowQuickReplies(false) }}
                       disabled={sending}
-                      className={`p-2.5 rounded-xl transition-colors ${
+                      className={`p-3 rounded-xl transition-colors ${
                         showAttachMenu ? 'bg-primary/20 text-primary' : 'text-text-muted hover:text-text-secondary hover:bg-bg-hover'
                       }`}
                       title="Anexar"
@@ -1337,7 +1337,7 @@ export default function Attendance() {
                     <button
                       onClick={openScheduleModal}
                       disabled={sending}
-                      className="p-2.5 rounded-xl transition-colors text-text-muted hover:text-text-secondary hover:bg-bg-hover relative"
+                      className="p-3 rounded-xl transition-colors text-text-muted hover:text-text-secondary hover:bg-bg-hover relative"
                       title="Agendar mensagem"
                     >
                       <Clock size={22} />
