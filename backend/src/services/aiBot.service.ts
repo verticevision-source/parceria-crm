@@ -60,6 +60,13 @@ const MAX_PER_CONVERSATION = num(process.env.AI_BOT_MAX_REPLIES_PER_CONVERSATION
 const JANELA_RECUPERACAO_MS = num(process.env.AI_BOT_RECOVERY_WINDOW_MS, 3 * 60 * 60 * 1000)
 const MAX_RECUPERACAO = num(process.env.AI_BOT_RECOVERY_MAX, 40)
 const ESPACO_RECUPERACAO_MS = num(process.env.AI_BOT_RECOVERY_SPACING_MS, 8000)
+
+// Lead qualificado bem na hora em que a IA estava sem número conectado cai em
+// "Aguardando atendimento" e fica lá pra sempre (ver runCityRoute/noneOnline) —
+// ninguém volta nele quando ela reconecta. Janela curta (6h): cliente de dias
+// atrás já resolveu em outro lugar, reabordar tarde soa pior que não reabordar.
+const JANELA_REENGAJAR_MS = num(process.env.AI_BOT_REENGAGE_WINDOW_MS, 6 * 60 * 60 * 1000)
+const ESPACO_REENGAJAR_MS = num(process.env.AI_BOT_REENGAGE_SPACING_MS, 10000)
 // Teto diário: anti-runaway, não orçamento. Subiu de 300 pra 2000 quando a IA
 // passou a receber TODOS os leads — com ~100 clientes/dia e 6 a 10 respostas
 // por conversa, 300 acabava no meio da tarde e ela emudecia com o cliente
@@ -214,6 +221,65 @@ export class AIBotService {
       })
     } catch (e: any) {
       logger.error(`[IA-bot] Falha ao recuperar pendentes: ${e?.message}`)
+    }
+  }
+
+  /**
+   * Reconectou: retoma sozinha os leads que ficaram parados em "Aguardando
+   * atendimento" por ela ter caído bem na hora da qualificação (o robô de
+   * cidade marca `noneOnline` e nunca mais volta nesse lead — ver
+   * runCityRoute em chatFlow.service.ts). Sem isso, o cliente escreve, escolhe
+   * cidade e plano, recebe um "vai te chamar em breve" e nunca mais ouve
+   * falar da empresa — mesmo depois da IA voltar ao ar.
+   *
+   * Só os recentes (JANELA_REENGAJAR_MS): o objetivo é cobrir uma queda
+   * passageira, não reabrir uma fila de dias — isso fica pro time decidir na
+   * mão, olhando o Kanban.
+   */
+  static async reengajarLeadsParados(botUserId: string): Promise<void> {
+    try {
+      const stage = await prisma.pipelineStage.findFirst({ where: { name: 'Aguardando atendimento' } })
+      if (!stage) return
+
+      const desde = new Date(Date.now() - JANELA_REENGAJAR_MS)
+      const leads = await prisma.lead.findMany({
+        where: { responsibleUserId: botUserId, pipelineStageId: stage.id, createdAt: { gte: desde } },
+        select: { id: true, notes: true, contact: { select: { name: true, phone: true } } },
+        orderBy: { createdAt: 'asc' },
+        take: 40,
+      })
+      if (leads.length === 0) return
+
+      // Etapa "de descanso" de um lead qualificado normal — a mesma que ele
+      // teria recebido se a IA estivesse online na hora (ver distribute() em
+      // roulette.service.ts). Tira da gaveta de espera de volta pro fluxo normal.
+      const etapaNormal = await prisma.pipelineStage.findFirst({ where: { boardId: null }, orderBy: { order: 'asc' } })
+
+      logger.warn(`[IA-bot] Reconectou: ${leads.length} lead(s) presos em "Aguardando atendimento" — reengajando`)
+      leads.forEach((lead, i) => {
+        setTimeout(() => {
+          void (async () => {
+            try {
+              if (!lead.contact?.phone) return
+              const { WhatsAppService } = await import('./whatsapp.service')
+              const cidade = lead.notes?.match(/Cidade:\s*([^|\n]+)/)?.[1]?.trim()
+              const msg = `Olá! 😊 Aqui é Amanda, da Parceria Financeira.\n\nRecebi seu contato sobre o crédito${cidade ? ` em ${cidade}` : ''} — peço desculpas pela demora, tivemos uma instabilidade aqui no sistema. Posso continuar seu atendimento? 🙌`
+              await WhatsAppService.sendMessage(botUserId, lead.contact.phone, msg)
+              await prisma.lead.update({
+                where: { id: lead.id },
+                data: { pipelineStageId: etapaNormal?.id ?? null },
+              }).catch(() => {})
+              await prisma.cRMNote.create({
+                data: { leadId: lead.id, userId: botUserId, content: '🤖 IA reconectou e retomou o atendimento sozinha (estava preso em "Aguardando atendimento").' },
+              }).catch(() => {})
+            } catch (e: any) {
+              logger.warn(`[IA-bot] Falha ao reengajar lead ${lead.id}: ${e?.message}`)
+            }
+          })()
+        }, i * ESPACO_REENGAJAR_MS)
+      })
+    } catch (e: any) {
+      logger.error(`[IA-bot] Falha ao reengajar leads parados: ${e?.message}`)
     }
   }
 

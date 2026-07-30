@@ -577,6 +577,16 @@ function setupStatusListener(): void {
         }
       }
 
+      // Reconectou (de qualquer estado, não só de DISCONNECTED — WAITING_QR
+      // também conta): se for o número da IA, retoma sozinha os leads que
+      // ficaram presos em "Aguardando atendimento" enquanto ela estava fora.
+      if (!wasConnected && status.status === 'CONNECTED') {
+        const { AIBotService } = await import('./aiBot.service')
+        if (await AIBotService.isBotUser(session.userId)) {
+          void AIBotService.reengajarLeadsParados(session.userId)
+        }
+      }
+
       logger.info(`[WhatsAppService] Status atualizado: ${session.id} → ${status.status}`)
     } catch (err) {
       logger.error('[WhatsAppService] Erro ao atualizar status da sessão:', err)
