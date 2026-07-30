@@ -4,6 +4,7 @@ import { FinanceiroService } from '../services/financeiro.service'
 import { authMiddleware } from '../middlewares/auth.middleware'
 import { asyncHandler } from '../utils/asyncHandler'
 import { AuthRequest } from '../types'
+import { prisma } from '../config/database'
 
 const router = Router()
 
@@ -150,6 +151,77 @@ router.post(
     }
 
     res.json({ success: true, data: { ...r, enviada } })
+  })
+)
+
+/** Admin: cadastra a chave PIX da carteira. Fica por carteira, nunca fixa no
+ *  robô — chave errada é cliente pagando na conta de outra pessoa. */
+router.patch(
+  '/wallets/:linkId/pix',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (req.user!.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: 'Apenas administrador' })
+      return
+    }
+    const chave = String(req.body?.pixKey || '').trim() || null
+    const link = await prisma.walletLink.update({
+      where: { id: req.params.linkId },
+      data: { pixKey: chave },
+      select: { id: true, walletName: true, pixKey: true },
+    })
+    res.json({ success: true, data: link })
+  })
+)
+
+/**
+ * Admin: cria (ou regenera) o robô de atendimento desta carteira, SEMPRE
+ * desativado. Ativar é um passo separado e consciente, pelo /flows.
+ *
+ * Regerar é seguro e idempotente pelo nome: ao trocar a chave PIX, rode de novo
+ * para o robô passar a mandar a chave nova.
+ */
+router.post(
+  '/wallets/:linkId/bot',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (req.user!.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: 'Apenas administrador' })
+      return
+    }
+    const link = await prisma.walletLink.findUnique({
+      where: { id: req.params.linkId },
+      select: { walletName: true, whatsappSessionId: true, pixKey: true, user: { select: { name: true } } },
+    })
+    if (!link) {
+      res.status(404).json({ success: false, message: 'Carteira não encontrada' })
+      return
+    }
+    if (!link.whatsappSessionId) {
+      res.status(409).json({
+        success: false,
+        message: 'Amarre um número de WhatsApp a esta carteira antes de criar o robô',
+      })
+      return
+    }
+
+    const { criarRoboCarteira } = await import('../services/roboCarteira')
+    const flow = await criarRoboCarteira({
+      nome: `Atendimento ${link.walletName} (${link.user.name})`,
+      sessionId: link.whatsappSessionId,
+      pixKey: link.pixKey,
+      linkAmanda: String(req.body?.linkAmanda || '').trim(),
+      timeoutMinutes: Number(req.body?.timeoutMinutes) || 180,
+    })
+
+    res.json({
+      success: true,
+      data: {
+        id: flow.id,
+        nome: flow.name,
+        ativo: flow.isActive,
+        comChavePix: Boolean(link.pixKey),
+        timeoutMinutes: flow.timeoutMinutes,
+      },
+    })
   })
 )
 
