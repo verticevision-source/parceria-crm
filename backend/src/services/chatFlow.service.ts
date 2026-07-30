@@ -89,20 +89,61 @@ export class ChatFlowService {
    * - Sem amarração, mantém o comportamento antigo: só em números de ADMIN.
    */
   static async canStartOnSession(sessionId: string, ownerUserId: string): Promise<boolean> {
-    const flow = await ChatFlowService.getActiveFlow()
-    if (!flow) return false
-    const bound = (flow as any).whatsappSessionId as string | null
-    if (bound) {
-      return bound.split(',').map((s) => s.trim()).filter(Boolean).includes(sessionId)
-    }
-    const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
-    return owner?.role === 'ADMIN'
+    return Boolean(await ChatFlowService.flowForSession(sessionId, ownerUserId))
   }
 
-  static async update(id: string, data: { name?: string; isActive?: boolean; nodes?: any; edges?: any; whatsappSessionId?: string | null }) {
-    // Se ativar este, desativa os outros (um fluxo ativo por vez)
+  /**
+   * O robô DESTE número. Antes existia um robô ativo só no sistema inteiro
+   * (`getActiveFlow`), então ativar o robô de uma carteira DESLIGAVA o de
+   * qualificação — o que sustenta as vendas.
+   *
+   * Ordem: robô amarrado a este número → robô sem amarração (legado, só em
+   * número de ADMIN). Sem nada, null.
+   */
+  static async flowForSession(sessionId: string, ownerUserId?: string) {
+    const ativos = await prisma.chatFlow.findMany({ where: { isActive: true } })
+
+    const numerosDe = (f: any) =>
+      String(f.whatsappSessionId || '').split(',').map((x: string) => x.trim()).filter(Boolean)
+
+    const amarrado = ativos.find((f) => numerosDe(f).includes(sessionId))
+    if (amarrado) return amarrado
+
+    const semAmarra = ativos.find((f) => numerosDe(f).length === 0)
+    if (semAmarra && ownerUserId) {
+      const owner = await prisma.user.findUnique({ where: { id: ownerUserId }, select: { role: true } })
+      if (owner?.role === 'ADMIN') return semAmarra
+    }
+    return null
+  }
+
+  static async update(id: string, data: { name?: string; isActive?: boolean; nodes?: any; edges?: any; whatsappSessionId?: string | null; timeoutMinutes?: number | null; timeoutAction?: string | null }) {
+    // Ativar desativa APENAS quem disputa o mesmo número — não todos. Antes era
+    // "um robô ativo por sistema": ligar o robô de uma carteira derrubava o de
+    // qualificação e a empresa parava de qualificar lead sem ninguém notar.
     if (data.isActive === true) {
-      await prisma.chatFlow.updateMany({ where: { id: { not: id } }, data: { isActive: false } })
+      const atual = await prisma.chatFlow.findUnique({ where: { id }, select: { whatsappSessionId: true } })
+      const numeros = String(data.whatsappSessionId ?? atual?.whatsappSessionId ?? '')
+        .split(',').map((x) => x.trim()).filter(Boolean)
+
+      const outros = await prisma.chatFlow.findMany({
+        where: { id: { not: id }, isActive: true },
+        select: { id: true, whatsappSessionId: true },
+      })
+      const conflitantes = outros.filter((o) => {
+        const dele = String(o.whatsappSessionId || '').split(',').map((x) => x.trim()).filter(Boolean)
+        // Sem amarração dos dois lados = ambos disputam "qualquer número de
+        // ADMIN", então continuam se excluindo.
+        if (numeros.length === 0 && dele.length === 0) return true
+        return dele.some((n) => numeros.includes(n))
+      })
+      if (conflitantes.length > 0) {
+        await prisma.chatFlow.updateMany({
+          where: { id: { in: conflitantes.map((c) => c.id) } },
+          data: { isActive: false },
+        })
+        logger.warn(`[Flow] Ativando "${id}": desativados ${conflitantes.length} robô(s) do mesmo número`)
+      }
     }
     return prisma.chatFlow.update({ where: { id }, data })
   }
@@ -117,8 +158,12 @@ export class ChatFlowService {
   // ── Execução ───────────────────────────────────────────────────────────────
 
   /** Inicia o fluxo para uma nova conversa. Retorna true se iniciou. */
-  static async startForConversation(conversationId: string, contactId: string, userId: string, phone: string): Promise<boolean> {
-    const flow = await ChatFlowService.getActiveFlow()
+  static async startForConversation(conversationId: string, contactId: string, userId: string, phone: string, sessionId?: string): Promise<boolean> {
+    // Com sessionId, pega o robô DAQUELE número. Sem (reinício manual pelo
+    // painel), mantém o comportamento antigo.
+    const flow = sessionId
+      ? await ChatFlowService.flowForSession(sessionId, userId)
+      : await ChatFlowService.getActiveFlow()
     if (!flow) return false
 
     // Não inicia se o dono não tem número conectado: o fluxo ficaria "mudo"
@@ -636,9 +681,15 @@ Cliente: ${phone}`)
 
       // ── Reiniciar: apaga a sessão para o robô abrir o menu do zero na próxima
       // mensagem do cliente. Mais simples e previsível que reposicionar o nó.
+      // Marca 'done' em vez de APAGAR. Apagar parecia mais limpo, mas o robô só
+      // inicia em conversa NOVA — sem a linha aqui, o menu nunca voltaria e o
+      // cliente escreveria no vazio.
       if (f?.timeoutAction === 'reiniciar') {
-        await prisma.chatFlowSession.delete({ where: { id: s.id } }).catch(() => {})
-        logger.info(`[Flow] Timeout ${janela}min: menu reiniciado p/ conv=${s.conversationId}`)
+        await prisma.chatFlowSession.update({
+          where: { id: s.id },
+          data: { status: 'done', currentNodeId: null },
+        }).catch(() => {})
+        logger.info(`[Flow] Timeout ${janela}min: menu vai reiniciar na próxima msg (conv=${s.conversationId})`)
         continue
       }
 
@@ -664,12 +715,41 @@ Cliente: ${phone}`)
    * que nunca completou). Sem isso, resposta tardia ficava sem qualificação.
    * Retorna true se reiniciou o fluxo.
    */
-  static async maybeRestartAfterReply(conversationId: string, contactId: string, userId: string, phone: string): Promise<boolean> {
+  static async maybeRestartAfterReply(conversationId: string, contactId: string, userId: string, phone: string, sessionId?: string): Promise<boolean> {
     const session = await prisma.chatFlowSession.findUnique({ where: { conversationId } })
-    // Só reengata sessão que ESTOUROU sem terminar a qualificação (parou numa pergunta)
     if (!session || session.status !== 'done') return false
-    if (session.currentNodeId !== 'q_city' && session.currentNodeId !== 'q_mod') return false
+
+    // Robô de MENU (timeoutAction 'reiniciar'): reinicia sempre, qualquer que
+    // seja o nó onde parou — a graça do menu é justamente recomeçar.
+    const flow = await prisma.chatFlow.findUnique({
+      where: { id: session.flowId },
+      select: { timeoutAction: true },
+    })
+    const ehMenu = flow?.timeoutAction === 'reiniciar'
+
+    // Robô de QUALIFICAÇÃO: só reengata quem estourou numa pergunta.
+    if (!ehMenu && session.currentNodeId !== 'q_city' && session.currentNodeId !== 'q_mod') return false
+
     await prisma.chatFlowSession.delete({ where: { id: session.id } }).catch(() => {})
-    return ChatFlowService.startForConversation(conversationId, contactId, userId, phone)
+    return ChatFlowService.startForConversation(conversationId, contactId, userId, phone, sessionId)
+  }
+
+  /**
+   * Abre o menu numa conversa que JÁ existe e está sem sessão de robô.
+   *
+   * Sem isso, cliente da carteira que já tinha conversa (de uma cobrança, do
+   * wa.me) nunca veria o menu: o robô só inicia em conversa NOVA. Vale só para
+   * robô de menu — o de qualificação não deve reabordar quem já foi qualificado.
+   */
+  static async retomarMenu(conversationId: string, contactId: string, userId: string, phone: string, sessionId: string): Promise<boolean> {
+    const flow = await ChatFlowService.flowForSession(sessionId, userId)
+    if (!flow || (flow as any).timeoutAction !== 'reiniciar') return false
+
+    const existente = await prisma.chatFlowSession.findUnique({ where: { conversationId } })
+    // 'waiting' já foi tratado pelo handleInbound; 'running' está no meio de um passo.
+    if (existente && existente.status !== 'done') return false
+    if (existente) await prisma.chatFlowSession.delete({ where: { id: existente.id } }).catch(() => {})
+
+    return ChatFlowService.startForConversation(conversationId, contactId, userId, phone, sessionId)
   }
 }

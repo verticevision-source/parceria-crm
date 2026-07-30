@@ -226,14 +226,20 @@ function setupMessageListener(): void {
           // (amarrado no fluxo; sem amarração, qualquer número de ADMIN).
           if (!botHandled && isNewConversation) {
             if (await ChatFlowService.canStartOnSession(session.id, ownerUserId)) {
-              botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone)
+              botHandled = await ChatFlowService.startForConversation(conversation.id, contact.id, ownerId, contact.phone, session.id)
             }
           }
           // Resposta TARDIA (depois do timeout) no número da campanha: reengata
           // a qualificação em vez de deixar a mensagem sem robô.
           if (!botHandled && !isNewConversation) {
             if (await ChatFlowService.canStartOnSession(session.id, ownerUserId)) {
-              botHandled = await ChatFlowService.maybeRestartAfterReply(conversation.id, contact.id, ownerId, contact.phone)
+              botHandled = await ChatFlowService.maybeRestartAfterReply(conversation.id, contact.id, ownerId, contact.phone, session.id)
+              // Robô de MENU (carteira): conversa que já existia e está sem
+              // sessão também abre o menu. Sem isso, cliente que já tinha
+              // conversa com a gerente nunca veria o menu.
+              if (!botHandled) {
+                botHandled = await ChatFlowService.retomarMenu(conversation.id, contact.id, ownerId, contact.phone, session.id)
+              }
             }
           }
         } catch (e) {
