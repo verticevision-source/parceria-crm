@@ -79,4 +79,57 @@ router.post(
   })
 )
 
+/**
+ * Cobrar o cliente pelo número da carteira.
+ *
+ * Passa pelo sistema (e não pelo wa.me) por dois motivos: sai pelo número da
+ * empresa, e a conversa fica registrada no Atendimento — cobrança pelo celular
+ * pessoal não deixa rastro nenhum e ninguém consegue auditar o que foi dito.
+ */
+router.post(
+  '/collect',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    const { phone, body, walletId } = req.body || {}
+    if (!phone || !String(body || '').trim()) {
+      res.status(400).json({ success: false, message: 'Informe o telefone e a mensagem' })
+      return
+    }
+
+    // Só cliente da própria carteira. Sem esta guarda, trocar o telefone no
+    // corpo da requisição disparava mensagem pelo número da empresa pra
+    // qualquer pessoa.
+    const dono = await FinanceiroService.clienteDaMinhaCarteira(req.user!.userId, String(phone))
+    if (!dono.ok) {
+      res.status(403).json({ success: false, message: 'Este telefone não é de um cliente das suas carteiras' })
+      return
+    }
+
+    const sessionId = await PortfolioService.sessionParaCobranca(
+      req.user!.userId,
+      (walletId as string) || dono.walletId
+    )
+    const { WhatsAppService } = await import('../services/whatsapp.service')
+    const msg = await WhatsAppService.sendFromSession(sessionId, String(phone), String(body).trim(), {
+      humanPainel: true,
+    })
+    res.json({ success: true, data: { enviada: true, cliente: dono.nome, messageId: msg?.id } })
+  })
+)
+
+/** Admin: amarra um número de WhatsApp à carteira. */
+router.patch(
+  '/wallets/:linkId/session',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (req.user!.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: 'Apenas administrador' })
+      return
+    }
+    const data = await PortfolioService.setWalletSession(
+      req.params.linkId,
+      (req.body?.sessionId as string) || null
+    )
+    res.json({ success: true, data })
+  })
+)
+
 export default router

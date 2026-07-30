@@ -51,6 +51,7 @@ export default function MinhaCarteira() {
   const [busca, setBusca] = useState('')
   const [filtro, setFiltro] = useState<'atrasados' | 'todos'>('atrasados')
   const [aberto, setAberto] = useState<Cliente | null>(null)
+  const [cobrando, setCobrando] = useState<Cliente | null>(null)
 
   const recarregar = () => {
     portfolioApi
@@ -165,7 +166,7 @@ export default function MinhaCarteira() {
           ) : (
             <div className="space-y-2">
               {lista.map((c) => (
-                <LinhaCliente key={c.loanId} c={c} onAbrir={() => setAberto(c)} />
+                <LinhaCliente key={c.loanId} c={c} onAbrir={() => setAberto(c)} onCobrar={() => setCobrando(c)} />
               ))}
             </div>
           )}
@@ -173,6 +174,9 @@ export default function MinhaCarteira() {
       )}
 
       {aberto && <FichaCliente c={aberto} onFechar={() => setAberto(null)} onMudou={recarregar} />}
+      {cobrando && (
+        <ModalCobranca c={cobrando} nomeGerente={dados?.gerente?.nome} onFechar={() => setCobrando(null)} />
+      )}
     </div>
   )
 }
@@ -187,7 +191,7 @@ function Cartao({ rotulo, valor, alerta }: { rotulo: string; valor: string; aler
   )
 }
 
-function LinhaCliente({ c, onAbrir }: { c: Cliente; onAbrir: () => void }) {
+function LinhaCliente({ c, onAbrir, onCobrar }: { c: Cliente; onAbrir: () => void; onCobrar: () => void }) {
   const zap = paraWhats(c.cliente.telefone)
   return (
     <div
@@ -209,17 +213,29 @@ function LinhaCliente({ c, onAbrir }: { c: Cliente; onAbrir: () => void }) {
         </p>
         <p className="text-text-muted text-[11px] mt-0.5 truncate">{c.walletName} · {c.cliente.telefone}</p>
       </button>
-      {zap && (
-        <a
-          href={`https://wa.me/${zap}`}
-          target="_blank"
-          rel="noreferrer"
-          title="Abrir conversa no WhatsApp"
-          className="flex-shrink-0 p-2 rounded-lg bg-success/15 text-success hover:bg-success/25 transition-colors"
+      <div className="flex flex-col gap-1.5 flex-shrink-0">
+        {/* Cobrar PELO SISTEMA: sai do numero da carteira e fica registrado.
+            O wa.me abaixo sai do celular pessoal e nao deixa rastro — fica como
+            alternativa, nao como caminho principal. */}
+        <button
+          onClick={onCobrar}
+          title="Cobrar pelo número da carteira (fica registrado)"
+          className="px-2.5 py-1.5 rounded-lg bg-primary/15 text-primary hover:bg-primary/25 text-[11px] font-semibold transition-colors whitespace-nowrap"
         >
-          <MessageCircle size={16} />
-        </a>
-      )}
+          Cobrar
+        </button>
+        {zap && (
+          <a
+            href={`https://wa.me/${zap}`}
+            target="_blank"
+            rel="noreferrer"
+            title="Abrir no seu WhatsApp pessoal (não fica registrado)"
+            className="p-1.5 rounded-lg bg-bg-tertiary text-text-muted hover:text-success transition-colors flex items-center justify-center"
+          >
+            <MessageCircle size={14} />
+          </a>
+        )}
+      </div>
     </div>
   )
 }
@@ -554,6 +570,83 @@ function ModalBaixa({
               </button>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Cobrança pelo número da carteira, passando pelo sistema.
+ *
+ * O texto sugerido é factual e oferece diálogo, de propósito: cobrança que
+ * pressiona ou expõe o cliente é proibida (CDC art. 42) e, na prática, faz a
+ * pessoa bloquear o número — aí a carteira perde o canal de cobrança inteiro.
+ * Sempre editável antes de enviar.
+ */
+function ModalCobranca({
+  c,
+  nomeGerente,
+  onFechar,
+}: {
+  c: Cliente
+  nomeGerente?: string
+  onFechar: () => void
+}) {
+  const primeiroNome = (c.cliente.nome || '').trim().split(/\s+/)[0] || 'tudo bem'
+  const sugerido = [
+    `Oi ${primeiroNome}, tudo bem?${nomeGerente ? ` Aqui é a ${nomeGerente.split(/\s+/)[0]}` : ''} da Parceria Financeira.`,
+    '',
+    c.totalVencido > 0
+      ? `Passando para lembrar da sua parcela em aberto, de ${dinheiro(c.totalVencido)}. Consegue acertar hoje?`
+      : 'Passando para falar do seu empréstimo. Podemos conversar?',
+    '',
+    'Se estiver difícil agora, me chama aqui que a gente vê uma forma juntos.',
+  ].join('\n')
+
+  const [texto, setTexto] = useState(sugerido)
+  const [enviando, setEnviando] = useState(false)
+
+  const enviar = async () => {
+    if (!texto.trim()) return toast.error('Escreva a mensagem')
+    setEnviando(true)
+    try {
+      await portfolioApi.cobrar({ phone: c.cliente.telefone, body: texto.trim(), walletId: undefined })
+      toast.success('Mensagem enviada — a conversa está no Atendimento')
+      onFechar()
+    } catch (e: any) {
+      toast.error(e?.response?.data?.message || 'Não foi possível enviar', { duration: 7000 })
+    } finally {
+      setEnviando(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[60] bg-black/75 flex items-end sm:items-center justify-center p-0 sm:p-4"
+      onClick={onFechar}>
+      <div className="bg-bg-secondary w-full sm:max-w-md sm:rounded-2xl rounded-t-2xl border border-border overflow-hidden"
+        onClick={(e) => e.stopPropagation()}>
+        <div className="p-4 border-b border-border flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-text-primary font-bold truncate">Cobrar {c.cliente.nome}</h2>
+            <p className="text-text-muted text-xs mt-0.5">
+              {c.diasAtraso > 0 ? `${c.diasAtraso} dias em atraso · ` : ''}{dinheiro(c.totalVencido)} vencido
+            </p>
+          </div>
+          <button onClick={onFechar} className="p-1.5 rounded-lg hover:bg-bg-hover text-text-muted flex-shrink-0">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-4 space-y-3">
+          <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={8}
+            className="input-field resize-none text-sm" />
+          <p className="text-text-muted text-[11px]">
+            Sai pelo número da sua carteira e fica registrada no Atendimento — a resposta
+            do cliente chega no seu painel.
+          </p>
+          <button onClick={enviar} disabled={enviando} className="btn-primary w-full flex items-center justify-center gap-2">
+            {enviando ? <><Loader2 size={15} className="animate-spin" /> Enviando…</> : <><MessageCircle size={15} /> Enviar cobrança</>}
+          </button>
         </div>
       </div>
     </div>

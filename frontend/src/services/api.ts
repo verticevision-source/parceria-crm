@@ -65,6 +65,10 @@ export const portfolioApi = {
     opPassword: string
     eventoId: string
   }) => api.post('/portfolio/payments', dados),
+  cobrar: (dados: { phone: string; body: string; walletId?: string }) =>
+    api.post('/portfolio/collect', dados),
+  setWalletSession: (linkId: string, sessionId: string | null) =>
+    api.patch(`/portfolio/wallets/${linkId}/session`, { sessionId }),
 }
 
 // IA

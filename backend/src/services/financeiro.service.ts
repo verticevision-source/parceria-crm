@@ -41,7 +41,7 @@ function traduzErro(status: number, corpo: any): string {
     case 'company_indefinida':
       return 'A integração com o financeiro está sem a empresa configurada. Avise o administrador.'
     case 'gerente_nao_encontrado':
-      return 'Você não está cadastrada como gerente de carteira no sistema financeiro.'
+      return 'Seu usuário não está cadastrado como gerente de carteira no sistema financeiro.'
     case 'cliente_nao_encontrado':
       return 'Cliente não encontrado nas suas carteiras.'
     case 'email_obrigatorio':
@@ -187,6 +187,32 @@ export class FinanceiroService {
     } finally {
       clearTimeout(t)
     }
+  }
+
+  /**
+   * Este telefone é de um cliente das carteiras deste usuário?
+   *
+   * Guarda do envio de cobrança: sem ela, bastaria trocar o telefone no corpo
+   * da requisição para disparar mensagem pelo número da empresa para qualquer
+   * pessoa. Confere pelos DÍGITOS (o financeiro guarda telefone como texto
+   * livre e o CRM guarda 5517999998888).
+   */
+  static async clienteDaMinhaCarteira(
+    userId: string,
+    phone: string
+  ): Promise<{ ok: boolean; nome?: string; walletId?: string }> {
+    const digitos = (s: string) => String(s || '').replace(/\D/g, '')
+    const alvo = digitos(phone)
+    if (alvo.length < 8) return { ok: false }
+
+    const carteira = await FinanceiroService.minhaCarteira(userId)
+    for (const c of carteira?.clientes || []) {
+      const d = digitos(c?.cliente?.telefone)
+      if (d.length >= 8 && (d.endsWith(alvo.slice(-10)) || alvo.endsWith(d.slice(-10)))) {
+        return { ok: true, nome: c.cliente.nome, walletId: c.walletId }
+      }
+    }
+    return { ok: false }
   }
 
   /** Ficha completa do cliente. Casa por CPF; telefone é fallback. */
