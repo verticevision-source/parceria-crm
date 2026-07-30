@@ -164,11 +164,33 @@ function setupMessageListener(): void {
           },
         })
       } else {
+        // ── De quem é esta conversa? ─────────────────────────────────────────
+        // Em número de CAMPANHA, quem decide é a ROLETA: não se toca no dono,
+        // senão cada mensagem do cliente devolvia o lead pro adm e atropelava o
+        // vendedor que o pegou.
+        //
+        // Em número de PESSOA (vendedor, gerente de carteira), a conversa é de
+        // quem é o número. Sem isso, um contato antigo no nome de outra pessoa
+        // fazia a mensagem cair numa conta que ninguém abre: um cliente escreveu
+        // no número do Roberto, a conversa ficou no nome de um vendedor inativo,
+        // e 8 mensagens ficaram invisíveis pra todo mundo — inclusive pro Roberto.
+        let novoDono: string | undefined
+        if (conversation.userId !== session.userId) {
+          try {
+            const { ChatFlowService } = await import('./chatFlow.service')
+            if (!(await ChatFlowService.numeroDistribuiLeads(session.id))) {
+              novoDono = session.userId
+              logger.info(`[WhatsAppService] Conversa ${conversation.id} passou p/ o dono do número (era de outro usuário)`)
+            }
+          } catch (e: any) {
+            logger.warn(`[WhatsAppService] Não deu p/ decidir o dono da conversa: ${e?.message}`)
+          }
+        }
+
         conversation = await prisma.conversation.update({
           where: { id: conversation.id },
           data: {
-            // NÃO mexe no userId: quem define o responsável é a ROLETA. Antes isso
-            // devolvia a conversa pro dono do número (adm) a cada msg do cliente.
+            ...(novoDono ? { userId: novoDono } : {}),
             whatsappSessionId: session.id,  // mantém a conversa na sessão ativa (evita apontar p/ sessão velha)
             lastMessage: message.body,
             lastMessageAt: message.timestamp,

@@ -93,6 +93,24 @@ export class ChatFlowService {
   }
 
   /**
+   * Este número DISTRIBUI leads (é número de campanha/frente)?
+   *
+   * É o que separa os dois mundos: num número de campanha, quem define o dono da
+   * conversa é a ROLETA — o cliente escreve na frente e o lead vai pro vendedor
+   * sorteado. Num número de PESSOA (vendedor, gerente de carteira), a conversa é
+   * de quem é o número.
+   *
+   * Detecta pelos nós de distribuição do fluxo, não por lista fixa de números:
+   * o robô de menu da carteira não tem esses nós, o de qualificação tem.
+   */
+  static async numeroDistribuiLeads(sessionId: string): Promise<boolean> {
+    const flow = await ChatFlowService.flowForSession(sessionId)
+    if (!flow) return false
+    const nodes = (flow.nodes as unknown as FlowNode[]) || []
+    return nodes.some((n) => ['cityRoute', 'cityHandoff', 'handoff'].includes(n?.data?.type || ''))
+  }
+
+  /**
    * O robô DESTE número. Antes existia um robô ativo só no sistema inteiro
    * (`getActiveFlow`), então ativar o robô de uma carteira DESLIGAVA o de
    * qualificação — o que sustenta as vendas.

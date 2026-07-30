@@ -5,6 +5,7 @@ import { authMiddleware } from '../middlewares/auth.middleware'
 import { asyncHandler } from '../utils/asyncHandler'
 import { AuthRequest } from '../types'
 import { prisma } from '../config/database'
+import { logger } from '../utils/logger'
 
 const router = Router()
 
@@ -151,6 +152,72 @@ router.post(
     }
 
     res.json({ success: true, data: { ...r, enviada } })
+  })
+)
+
+/**
+ * Admin: acerta conversas cujo DONO não é o dono do NÚMERO que as atende.
+ *
+ * Elas ficam invisíveis pra todo mundo: quem tem o número não vê (a conversa é
+ * de outro), e o "dono" não vê porque não é o número dele — muitas vezes é um
+ * vendedor inativo. Foram encontradas 31 nesse estado, uma com 16 mensagens sem
+ * resposta há 13 dias.
+ *
+ * Mexe SÓ na conversa. NÃO toca no lead: conversa é "quem fala com a pessoa no
+ * WhatsApp", lead é "de quem é a venda" — mudar lead mexe em comissão.
+ *
+ * `dryRun` (padrão) só relata. Passe { aplicar: true } para efetivar.
+ */
+router.post(
+  '/admin/acertar-donos-de-conversa',
+  asyncHandler(async (req: AuthRequest, res: Response) => {
+    if (req.user!.role !== 'ADMIN') {
+      res.status(403).json({ success: false, message: 'Apenas administrador' })
+      return
+    }
+    const aplicar = req.body?.aplicar === true
+    const { ChatFlowService } = await import('../services/chatFlow.service')
+
+    const sessoes = await prisma.whatsAppSession.findMany({ select: { id: true, userId: true } })
+    const donoDaSessao = new Map(sessoes.map((s) => [s.id, s.userId]))
+
+    // Números que distribuem lead (campanha) ficam de fora: lá quem decide o
+    // dono é a roleta.
+    const distribui = new Map<string, boolean>()
+    for (const s of sessoes) distribui.set(s.id, await ChatFlowService.numeroDistribuiLeads(s.id))
+
+    const convs = await prisma.conversation.findMany({
+      select: { id: true, userId: true, whatsappSessionId: true, unreadCount: true,
+        contact: { select: { name: true, phone: true } } },
+    })
+
+    const alvos = convs.filter((c) => {
+      const dono = donoDaSessao.get(c.whatsappSessionId)
+      return dono && dono !== c.userId && !distribui.get(c.whatsappSessionId)
+    })
+
+    let corrigidas = 0
+    if (aplicar) {
+      for (const c of alvos) {
+        const dono = donoDaSessao.get(c.whatsappSessionId)!
+        await prisma.conversation.update({ where: { id: c.id }, data: { userId: dono } }).catch(() => {})
+        corrigidas++
+      }
+      logger.info(`[Conversas] ${corrigidas} conversa(s) passaram pro dono do número`)
+    }
+
+    res.json({
+      success: true,
+      data: {
+        modo: aplicar ? 'aplicado' : 'simulacao',
+        encontradas: alvos.length,
+        corrigidas,
+        comNaoLidas: alvos.filter((c) => c.unreadCount > 0).length,
+        amostra: alvos.slice(0, 10).map((c) => ({
+          cliente: c.contact?.name || c.contact?.phone, naoLidas: c.unreadCount,
+        })),
+      },
+    })
   })
 )
 
