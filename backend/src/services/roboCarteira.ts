@@ -43,7 +43,9 @@ export function montarRoboCarteira(pixKey: string | null, linkAmanda: string) {
         '*3* - Quero renovar meu empréstimo',
         '*4* - Quero um novo empréstimo',
         '*5* - Falar com o Gerente de Conta',
-      ].filter(Boolean).join('\n'),
+      // filter por !== null, NÃO por Boolean: '' é falsy e as linhas em branco
+      // são de propósito. Com Boolean o menu saía todo colado no WhatsApp.
+      ].filter((l) => l !== null).join('\n'),
     }, 400, 100),
 
     no('rotaMenu', 'condition', { label: 'Qual opção?' }, 400, 200),
