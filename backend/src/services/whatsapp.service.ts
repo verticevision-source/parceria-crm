@@ -174,15 +174,22 @@ function setupMessageListener(): void {
         // fazia a mensagem cair numa conta que ninguém abre: um cliente escreveu
         // no número do Roberto, a conversa ficou no nome de um vendedor inativo,
         // e 8 mensagens ficaram invisíveis pra todo mundo — inclusive pro Roberto.
-        let novoDono: string | undefined
+        // Lead de vendedor ativo fica quieto: ver donoPeloNumero.
+        let novoDono: string | null = null
         if (conversation.userId !== session.userId) {
           try {
             const { ChatFlowService } = await import('./chatFlow.service')
-            if (!(await ChatFlowService.numeroDistribuiLeads(session.id))) {
-              novoDono = session.userId
+            novoDono = await ChatFlowService.donoPeloNumero({
+              conversationUserId: conversation.userId,
+              leadId: conversation.leadId ?? null,
+              sessionId: session.id,
+              sessionUserId: session.userId,
+            })
+            if (novoDono) {
               logger.info(`[WhatsAppService] Conversa ${conversation.id} passou p/ o dono do número (era de outro usuário)`)
             }
           } catch (e: any) {
+            // Na dúvida não mexe: conversa parada é ruim, comissão trocada é pior.
             logger.warn(`[WhatsAppService] Não deu p/ decidir o dono da conversa: ${e?.message}`)
           }
         }

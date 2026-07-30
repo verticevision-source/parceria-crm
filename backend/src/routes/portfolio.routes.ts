@@ -178,32 +178,53 @@ router.post(
     const aplicar = req.body?.aplicar === true
     const { ChatFlowService } = await import('../services/chatFlow.service')
 
-    const sessoes = await prisma.whatsAppSession.findMany({ select: { id: true, userId: true } })
-    const donoDaSessao = new Map(sessoes.map((s) => [s.id, s.userId]))
-
-    // Números que distribuem lead (campanha) ficam de fora: lá quem decide o
-    // dono é a roleta.
-    const distribui = new Map<string, boolean>()
-    for (const s of sessoes) distribui.set(s.id, await ChatFlowService.numeroDistribuiLeads(s.id))
+    const sessoes = await prisma.whatsAppSession.findMany({
+      select: { id: true, userId: true, name: true },
+    })
+    const sessaoPorId = new Map(sessoes.map((s) => [s.id, s]))
 
     const convs = await prisma.conversation.findMany({
-      select: { id: true, userId: true, whatsappSessionId: true, unreadCount: true,
-        contact: { select: { name: true, phone: true } } },
+      select: {
+        id: true, userId: true, whatsappSessionId: true, unreadCount: true, leadId: true,
+        contact: { select: { name: true, phone: true } },
+        user: { select: { name: true, isActive: true } },
+      },
+      orderBy: { lastMessageAt: 'desc' },
     })
 
-    const alvos = convs.filter((c) => {
-      const dono = donoDaSessao.get(c.whatsappSessionId)
-      return dono && dono !== c.userId && !distribui.get(c.whatsappSessionId)
-    })
+    // Mesma decisão do recebimento ao vivo (donoPeloNumero): número de campanha
+    // e lead de vendedor ativo passam batido.
+    const nomeDoUsuario = new Map(
+      (await prisma.user.findMany({ select: { id: true, name: true } })).map((u) => [u.id, u.name])
+    )
+    const alvos: Array<{ conv: (typeof convs)[number]; novoDono: string }> = []
+    const preservadas: Array<{ cliente: string; motivo: string }> = []
+
+    for (const c of convs) {
+      const s = sessaoPorId.get(c.whatsappSessionId)
+      if (!s || s.userId === c.userId) continue
+      const novoDono = await ChatFlowService.donoPeloNumero({
+        conversationUserId: c.userId,
+        leadId: c.leadId,
+        sessionId: c.whatsappSessionId,
+        sessionUserId: s.userId,
+      })
+      if (novoDono) alvos.push({ conv: c, novoDono })
+      else preservadas.push({
+        cliente: c.contact?.name || c.contact?.phone || '?',
+        motivo: c.leadId ? 'tem lead de vendedor ativo' : 'número distribui lead (roleta)',
+      })
+    }
 
     let corrigidas = 0
     if (aplicar) {
-      for (const c of alvos) {
-        const dono = donoDaSessao.get(c.whatsappSessionId)!
-        await prisma.conversation.update({ where: { id: c.id }, data: { userId: dono } }).catch(() => {})
-        corrigidas++
+      for (const a of alvos) {
+        await prisma.conversation
+          .update({ where: { id: a.conv.id }, data: { userId: a.novoDono } })
+          .then(() => { corrigidas++ })
+          .catch((e: any) => logger.warn(`[Conversas] ${a.conv.id} não mudou: ${e?.message}`))
       }
-      logger.info(`[Conversas] ${corrigidas} conversa(s) passaram pro dono do número`)
+      logger.info(`[Conversas] ${corrigidas} de ${alvos.length} conversa(s) passaram pro dono do número`)
     }
 
     res.json({
@@ -212,9 +233,19 @@ router.post(
         modo: aplicar ? 'aplicado' : 'simulacao',
         encontradas: alvos.length,
         corrigidas,
-        comNaoLidas: alvos.filter((c) => c.unreadCount > 0).length,
-        amostra: alvos.slice(0, 10).map((c) => ({
-          cliente: c.contact?.name || c.contact?.phone, naoLidas: c.unreadCount,
+        comNaoLidas: alvos.filter((a) => a.conv.unreadCount > 0).length,
+        preservadas: preservadas.length,
+        porqueFicaram: preservadas.slice(0, 10),
+        // Lista inteira, com de->para: correção em massa que não mostra o que vai
+        // mudar é aposta.
+        lista: alvos.map((a) => ({
+          cliente: a.conv.contact?.name || a.conv.contact?.phone,
+          telefone: a.conv.contact?.phone,
+          naoLidas: a.conv.unreadCount,
+          de: (a.conv.user?.name || '?') + (a.conv.user?.isActive ? '' : ' (INATIVO)'),
+          para: nomeDoUsuario.get(a.novoDono) || a.novoDono,
+          numero: sessaoPorId.get(a.conv.whatsappSessionId)?.name,
+          temLead: !!a.conv.leadId,
         })),
       },
     })

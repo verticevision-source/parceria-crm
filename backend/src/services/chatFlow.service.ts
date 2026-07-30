@@ -104,10 +104,64 @@ export class ChatFlowService {
    * o robô de menu da carteira não tem esses nós, o de qualificação tem.
    */
   static async numeroDistribuiLeads(sessionId: string): Promise<boolean> {
-    const flow = await ChatFlowService.flowForSession(sessionId)
-    if (!flow) return false
-    const nodes = (flow.nodes as unknown as FlowNode[]) || []
-    return nodes.some((n) => ['cityRoute', 'cityHandoff', 'handoff'].includes(n?.data?.type || ''))
+    const DISTRIBUEM = ['cityRoute', 'cityHandoff', 'handoff']
+    const temNoDeDistribuir = (f: { nodes: unknown }) =>
+      ((f.nodes as unknown as FlowNode[]) || []).some((n) => DISTRIBUEM.includes(n?.data?.type || ''))
+
+    // TODOS os fluxos, ativos ou não — de propósito. Se eu usasse só os ativos,
+    // desligar o robô da frente por 5 minutos faria o número de campanha passar
+    // por número de pessoa, e cada mensagem que chegasse puxaria o lead do
+    // vendedor pro dono do número. Robô desligado não muda a natureza do número.
+    const todos = await prisma.chatFlow.findMany({ select: { nodes: true, whatsappSessionId: true } })
+    const numerosDe = (f: { whatsappSessionId: string | null }) =>
+      String(f.whatsappSessionId || '').split(',').map((x) => x.trim()).filter(Boolean)
+
+    if (todos.some((f) => numerosDe(f).includes(sessionId) && temNoDeDistribuir(f))) return true
+
+    // Fluxo sem número amarrado vale pros números do adm (regra do
+    // flowForSession). Na dúvida, trato como campanha: errar pra este lado
+    // deixa uma conversa parada; errar pro outro tira comissão de alguém.
+    if (todos.some((f) => numerosDe(f).length === 0 && temNoDeDistribuir(f))) {
+      const s = await prisma.whatsAppSession.findUnique({
+        where: { id: sessionId },
+        select: { user: { select: { role: true } } },
+      })
+      if (s?.user?.role === 'ADMIN') return true
+    }
+    return false
+  }
+
+  /**
+   * Quem deveria estar vendo esta conversa?  Devolve o userId novo, ou null pra
+   * não mexer.  Mesma função no recebimento ao vivo e na correção em massa: se
+   * fossem duas, uma ia desfazer o que a outra fez.
+   *
+   * Conversa é "quem fala com a pessoa".  Lead é "de quem é a venda".  Isto
+   * mexe SÓ na conversa, e só quando não há venda de ninguém em jogo:
+   *
+   * 1. Número de CAMPANHA nunca — lá quem decide o dono é a roleta.
+   * 2. Lead de vendedor ATIVO nunca — seria mexer em comissão.  Se o
+   *    responsável não trabalha mais, aí sim: o lead dele já é fantasma e o
+   *    cliente está falando com uma parede.
+   */
+  static async donoPeloNumero(input: {
+    conversationUserId: string
+    leadId: string | null
+    sessionId: string
+    sessionUserId: string | null
+  }): Promise<string | null> {
+    const { conversationUserId, leadId, sessionId, sessionUserId } = input
+    if (!sessionUserId || sessionUserId === conversationUserId) return null
+    if (await ChatFlowService.numeroDistribuiLeads(sessionId)) return null
+
+    if (leadId) {
+      const lead = await prisma.lead.findUnique({
+        where: { id: leadId },
+        select: { responsibleUserId: true, responsibleUser: { select: { isActive: true } } },
+      })
+      if (lead && lead.responsibleUserId !== sessionUserId && lead.responsibleUser?.isActive) return null
+    }
+    return sessionUserId
   }
 
   /**
