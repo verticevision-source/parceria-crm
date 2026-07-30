@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import Sidebar from './Sidebar'
 import BottomNav from './BottomNav'
+import AtualizacaoDisponivel from '../AtualizacaoDisponivel'
 import Logo from '../Logo'
 
 export default function Layout() {
@@ -46,6 +47,10 @@ export default function Layout() {
         {/* Navegação na zona do polegar. O menu no topo é inalcançável de uma mão. */}
         <BottomNav onAbrirMenu={() => setSidebarOpen(true)} />
       </div>
+
+      {/* O CDN guarda o index.html por 24h: sem este aviso, um deploy pode não
+          chegar no celular da equipe e todo mundo trabalha na versão velha. */}
+      <AtualizacaoDisponivel />
     </div>
   )
 }

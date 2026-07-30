@@ -105,6 +105,10 @@ export function montarRoboCarteira(pixKey: string | null, linkAmanda: string) {
     no('gerenteOperacoes', 'message', {
       label: 'Gerente de Operações',
       text: 'Combinado! O Gerente de Operações vai te chamar em breve por aqui.' + VOLTAR,
+      // Aviso vai pro Roberto (dono do número), por decisão do dono. Sem isso o
+      // robô prometia contato e ninguém ficava sabendo.
+      notificarDono: true,
+      notificarTexto: '🛠️ O cliente pediu para falar com o Gerente de Operações pelo robô.',
     }, 660, 540),
 
     // ── 3) Renovação ────────────────────────────────────────────────────────
