@@ -23,6 +23,34 @@ function base(): { url: string; key: string } {
   return { url: url.replace(/\/$/, ''), key }
 }
 
+/**
+ * Erro do financeiro em português de gente. Quem lê isso é a gerente de
+ * carteira no meio de uma cobrança — "HTTP 404" não diz a ela o que fazer, e
+ * pior: parece que o cliente não existe quando o problema é outro.
+ */
+function traduzErro(status: number, corpo: any): string {
+  const codigo = corpo?.error as string | undefined
+
+  // Rota inexistente devolve HTML, não JSON: o financeiro está desatualizado.
+  if (status === 404 && !codigo) {
+    return 'O sistema financeiro ainda não foi atualizado com esta função. Avise o administrador.'
+  }
+  switch (codigo) {
+    case 'unauthorized':
+      return 'A chave de integração com o financeiro está incorreta. Avise o administrador.'
+    case 'company_indefinida':
+      return 'A integração com o financeiro está sem a empresa configurada. Avise o administrador.'
+    case 'gerente_nao_encontrado':
+      return 'Você não está cadastrada como gerente de carteira no sistema financeiro.'
+    case 'cliente_nao_encontrado':
+      return 'Cliente não encontrado nas suas carteiras.'
+    case 'email_obrigatorio':
+      return 'Seu usuário está sem e-mail no CRM — não é possível consultar o financeiro.'
+  }
+  if (status >= 500) return 'O sistema financeiro está com problema no momento. Tente de novo em instantes.'
+  return `Não foi possível consultar o financeiro (erro ${status}).`
+}
+
 async function pedir<T>(caminho: string, params: Record<string, string | undefined>): Promise<T> {
   const { url, key } = base()
   const qs = new URLSearchParams()
@@ -38,10 +66,7 @@ async function pedir<T>(caminho: string, params: Record<string, string | undefin
       signal: ctrl.signal,
     })
     const corpo = (await res.json().catch(() => null)) as any
-    if (!res.ok) {
-      const detalhe = corpo?.error || corpo?.detail || `HTTP ${res.status}`
-      throw new Error(`Financeiro respondeu ${detalhe}`)
-    }
+    if (!res.ok) throw new Error(traduzErro(res.status, corpo))
     return corpo as T
   } catch (e: any) {
     if (e?.name === 'AbortError') throw new Error('O sistema financeiro não respondeu (tempo esgotado)')
