@@ -35,24 +35,27 @@ router.post('/start-for-conversation', asyncHandler(async (req, res) => {
     return
   }
   await prisma.chatFlowSession.deleteMany({ where: { conversationId } })
-  // Envia SEMPRE pelo número amarrado ao fluxo (o da campanha) — nunca pelo
-  // dono da conversa (que pode ser um vendedor, após redistribuição/timeout).
-  let senderUserId = conv.userId
-  const flow = await ChatFlowService.getActiveFlow()
-  const boundRaw = (flow as any)?.whatsappSessionId as string | null
-  // Pode haver VÁRIOS números amarrados (separados por vírgula). No reinício
-  // manual usa o primeiro — o número principal da campanha.
-  const boundSessionId = boundRaw?.split(',').map((s) => s.trim()).filter(Boolean)[0] || null
-  if (boundSessionId) {
-    const bound = await prisma.whatsAppSession.findUnique({ where: { id: boundSessionId }, select: { userId: true, status: true } })
-    if (!bound || bound.status !== 'CONNECTED') {
-      res.status(409).json({ success: false, message: 'O número do robô (campanha) não está conectado' })
-      return
-    }
-    senderUserId = bound.userId
+
+  // Roda o robô DO NÚMERO que atende esta conversa. Antes usava "o robô ativo"
+  // e o primeiro número dele — com mais de um robô no sistema isso reiniciaria
+  // o robô errado, e o cliente receberia o menu vindo de outro número.
+  const sessionId = conv.whatsappSessionId
+  const flow = await ChatFlowService.flowForSession(sessionId, conv.userId)
+  if (!flow) {
+    res.status(409).json({ success: false, message: 'Nenhum robô ativo no número desta conversa' })
+    return
   }
-  const started = await ChatFlowService.startForConversation(conv.id, conv.contactId, senderUserId, conv.contact.phone)
-  res.json({ success: true, data: { started, phone: conv.contact.phone } })
+  const sess = await prisma.whatsAppSession.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, status: true },
+  })
+  if (!sess || sess.status !== 'CONNECTED') {
+    res.status(409).json({ success: false, message: 'O número desta conversa não está conectado' })
+    return
+  }
+
+  const started = await ChatFlowService.startForConversation(conv.id, conv.contactId, sess.userId, conv.contact.phone, sessionId)
+  res.json({ success: true, data: { started, robo: flow.name, phone: conv.contact.phone } })
 }))
 
 router.get('/:id', asyncHandler(ChatFlowController.get))
