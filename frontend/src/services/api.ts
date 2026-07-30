@@ -52,6 +52,10 @@ export const usersApi = {
 // Carteiras do Parceria Financeiro que o usuário logado gerencia
 export const portfolioApi = {
   wallets: () => api.get('/portfolio/wallets'),
+  clients: (walletId?: string) =>
+    api.get('/portfolio/clients', { params: walletId ? { walletId } : {} }),
+  borrower: (chave: { cpf?: string; id?: string; phone?: string }) =>
+    api.get('/portfolio/borrower', { params: chave }),
 }
 
 // IA
