@@ -14,7 +14,59 @@ interface FlowEdge {
   label?: string
 }
 
+const brl = (v: number) =>
+  (Number(v) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+
+const dataBR = (iso: string) => {
+  try { return new Date(iso).toLocaleDateString('pt-BR') } catch { return iso }
+}
+
 export class ChatFlowService {
+  /**
+   * Extrato curto da dívida, para o cliente ler no WhatsApp.
+   *
+   * Mostra as VENCIDAS separadas e no máximo 5 a vencer: despejar 60 parcelas
+   * num WhatsApp não é informação, é ruído — e o que o cliente quer saber é
+   * quanto deve e quando vence a próxima.
+   */
+  static textoDivida(emprestimos: any[]): string {
+    const linhas: string[] = []
+    let total = 0
+    let juros = 0
+
+    for (const e of emprestimos) {
+      total += Number(e.saldoDevedor || 0)
+      const parcelas = (e.parcelas || []).filter((p: any) => p.status !== 'PAID')
+      const vencidas = parcelas.filter((p: any) => p.diasAtraso > 0)
+      const aVencer = parcelas.filter((p: any) => p.diasAtraso <= 0)
+      juros += parcelas.reduce((soma: number, p: any) => soma + Number(p.juros || 0), 0)
+
+      if (vencidas.length) {
+        linhas.push(`*Em atraso (${vencidas.length}):*`)
+        vencidas.slice(0, 5).forEach((p: any) =>
+          linhas.push(`• Parcela ${p.numero} — ${brl(p.valor)} — venceu ${dataBR(p.vencimento)} (${p.diasAtraso} dias)`)
+        )
+        if (vencidas.length > 5) linhas.push(`• ...e mais ${vencidas.length - 5} em atraso`)
+      }
+      if (aVencer.length) {
+        linhas.push(`*A vencer:*`)
+        aVencer.slice(0, 5).forEach((p: any) =>
+          linhas.push(`• Parcela ${p.numero} — ${brl(p.valor)} — vence ${dataBR(p.vencimento)}`)
+        )
+        if (aVencer.length > 5) linhas.push(`• ...e mais ${aVencer.length - 5} a vencer`)
+      }
+    }
+
+    return [
+      `*Saldo devedor total: ${brl(total)}*`,
+      juros > 0.004 ? `Juros por atraso já lançados: ${brl(juros)}` : null,
+      '',
+      ...linhas,
+      '',
+      'Qualquer divergência me avise que eu confiro com a equipe.',
+    ].filter((l) => l !== null).join('\n')
+  }
+
   // ── CRUD (admin) ─────────────────────────────────────────────────────────────
   static async list() {
     return prisma.chatFlow.findMany({ orderBy: { updatedAt: 'desc' } })
@@ -151,6 +203,18 @@ export class ChatFlowService {
 
       if (t === 'message') {
         if (node.data.text) await WhatsAppService.sendMessage(userId, phone, node.data.text).catch((e: any) => logger.warn('[Flow] Falha ao enviar: ' + e?.message))
+
+        // Avisa o DONO do número (ex.: a gerente da carteira) que tem algo
+        // esperando ação. Sem isso o cliente manda vídeo de renovação, ou pede
+        // pra falar com o gerente, e ninguém fica sabendo — o robô responde
+        // "vamos te chamar" e a promessa morre ali.
+        if (node.data.notificarDono) {
+          const nome = node.data.notificarTexto || 'O robô registrou um pedido do cliente.'
+          await WhatsAppService.notifySeller(userId, `${nome}
+Cliente: ${phone}`)
+            .catch((e: any) => logger.warn('[Flow] Falha ao avisar o dono: ' + e?.message))
+        }
+
         const next = outEdges(currentId)[0]
         currentId = next?.target || null
         continue
@@ -175,6 +239,42 @@ export class ChatFlowService {
         if (!chosen) chosen = outs.find((e) => (e.label || '').toLowerCase() === 'default' || (e.sourceHandle === 'else'))
         if (!chosen) chosen = outs[0]
         currentId = chosen?.target || null
+        continue
+      }
+
+      // ── Consulta ao Parceria Financeiro ─────────────────────────────────────
+      // Único nó que busca dado de fora. Existe porque "qual o valor total da
+      // minha dívida" não se responde com texto fixo — e mandar valor errado
+      // numa cobrança é pior que não responder.
+      //
+      // NUNCA interrompe o fluxo: se o cliente não está na carteira ou o
+      // financeiro está fora, manda o texto de reserva e segue. O cliente não
+      // pode ficar num robô travado esperando um dado que não vem.
+      if (t === 'consulta') {
+        let texto = node.data.textFallback
+          || 'Não consegui consultar seus dados agora. Já avisei o gerente da sua conta, ele te chama por aqui.'
+        try {
+          const { FinanceiroService } = await import('./financeiro.service')
+          const ficha = await FinanceiroService.fichaCliente(userId, { phone })
+          const emprestimos = (ficha?.emprestimos || []).filter((e: any) => e.status === 'ACTIVE')
+
+          if (emprestimos.length === 0) {
+            texto = node.data.textSemDivida || 'Pelo nosso sistema você não tem empréstimo em aberto. 😊'
+          } else if (node.data.consulta === 'saldo') {
+            // Aviso da renovação: só o essencial, sem despejar o extrato todo.
+            const saldo = emprestimos.reduce((soma: number, e: any) => soma + Number(e.saldoDevedor || 0), 0)
+            texto = saldo > 0.004
+              ? `Pelo nosso sistema ainda constam ${brl(saldo)} em aberto. A renovação exige o empréstimo quitado.`
+              : 'Pelo nosso sistema seu empréstimo está quitado. ✅'
+          } else {
+            texto = ChatFlowService.textoDivida(emprestimos)
+          }
+        } catch (e: any) {
+          logger.warn(`[Flow] Consulta ao financeiro falhou (${phone}): ${e?.message}`)
+        }
+        await WhatsAppService.sendMessage(userId, phone, texto).catch((e: any) => logger.warn('[Flow] Falha ao enviar consulta: ' + e?.message))
+        const next = outEdges(currentId)[0]
+        currentId = next?.target || null
         continue
       }
 
@@ -508,18 +608,53 @@ export class ChatFlowService {
    * follow-up manual — sem qualificação inventada e sem cold outbound.
    */
   static async processTimeouts(timeoutMinutes = 480): Promise<void> {
-    const cutoff = new Date(Date.now() - timeoutMinutes * 60_000)
-    const stale = await prisma.chatFlowSession.findMany({
-      where: { status: 'waiting', waitingSince: { lt: cutoff } },
-      take: 30,
+    // Cada robô pode ter o seu tempo e a sua ação. O de qualificação ENCERRA
+    // (manda pro Kanban "Não respondeu"); o de atendimento da carteira
+    // REINICIA o menu, porque cliente que voltou depois de horas não quer
+    // continuar de onde parou — quer escolher de novo.
+    const fluxos = await prisma.chatFlow.findMany({
+      select: { id: true, timeoutMinutes: true, timeoutAction: true },
     })
-    for (const s of stale) {
+    const cfg = new Map(fluxos.map((f) => [f.id, f]))
+
+    // Busca pela MENOR janela configurada, e filtra por fluxo depois: um robô
+    // de 3h não pode esperar a janela de 8h do outro pra ser atendido.
+    const menorJanela = Math.min(
+      timeoutMinutes,
+      ...fluxos.map((f) => f.timeoutMinutes ?? timeoutMinutes)
+    )
+    const candidatos = await prisma.chatFlowSession.findMany({
+      where: { status: 'waiting', waitingSince: { lt: new Date(Date.now() - menorJanela * 60_000) } },
+      take: 60,
+    })
+
+    for (const s of candidatos) {
+      const f = cfg.get(s.flowId)
+      const janela = f?.timeoutMinutes ?? timeoutMinutes
+      const venceu = s.waitingSince != null && Date.now() - s.waitingSince.getTime() >= janela * 60_000
+      if (!venceu) continue
+
+      // ── Reiniciar: apaga a sessão para o robô abrir o menu do zero na próxima
+      // mensagem do cliente. Mais simples e previsível que reposicionar o nó.
+      if (f?.timeoutAction === 'reiniciar') {
+        await prisma.chatFlowSession.delete({ where: { id: s.id } }).catch(() => {})
+        logger.info(`[Flow] Timeout ${janela}min: menu reiniciado p/ conv=${s.conversationId}`)
+        continue
+      }
+
+      await ChatFlowService.encerrarPorTimeout(s, janela)
+    }
+  }
+
+  /** Encerra e joga no Kanban — comportamento do robô de qualificação. */
+  private static async encerrarPorTimeout(s: { id: string; conversationId: string; contactId: string }, janela: number): Promise<void> {
+    {
       await prisma.chatFlowSession.update({ where: { id: s.id }, data: { status: 'done' } })
       try {
         const conv = await prisma.conversation.findUnique({ where: { id: s.conversationId }, select: { userId: true } })
         const stageId = await ChatFlowService.ensureStage('Não respondeu', '#a1a1aa')
         await ChatFlowService.leadToStage(s.contactId, conv?.userId || s.contactId, stageId, 'robo-sem-resposta', 'Robô: cliente não respondeu à qualificação')
-        logger.info(`[Flow] Timeout (${timeoutMinutes}min): ${s.conversationId} → Kanban "Não respondeu"`)
+        logger.info(`[Flow] Timeout (${janela}min): ${s.conversationId} → Kanban "Não respondeu"`)
       } catch (e: any) { logger.warn(`[Flow] Timeout sem stage: ${e?.message}`) }
     }
   }

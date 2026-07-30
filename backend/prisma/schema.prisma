@@ -100,6 +100,10 @@ model WalletLink {
   walletName String
   // Número usado para cobrar os clientes desta carteira (Fase D).
   whatsappSessionId String?
+  // Chave PIX DESTA carteira. Fica por carteira, e não fixa no robô, porque
+  // chave errada = cliente pagando na conta de outra pessoa. Sem chave, o robô
+  // NÃO oferece a opção em vez de mandar a de outra carteira.
+  pixKey            String?
   isActive   Boolean  @default(true)
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
@@ -607,6 +611,13 @@ model ChatFlow {
   // Número (sessão) em que o robô roda. Null = qualquer número de ADMIN (legado).
   // Amarrar aqui evita o robô disparar num número que não é o da campanha.
   whatsappSessionId String?
+  // Quanto tempo esperando resposta antes de agir, e o que fazer.
+  // 'encerrar' = manda pro Kanban "Não respondeu" (robô de qualificação).
+  // 'reiniciar' = volta ao começo do menu (robô de atendimento da carteira).
+  // Null usa o padrão global de hoje, então robô existente não muda de
+  // comportamento por causa desta coluna.
+  timeoutMinutes    Int?
+  timeoutAction     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
