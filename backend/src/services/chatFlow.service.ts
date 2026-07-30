@@ -347,7 +347,16 @@ Cliente: ${phone}`)
             texto = ChatFlowService.textoDivida(emprestimos)
           }
         } catch (e: any) {
-          logger.warn(`[Flow] Consulta ao financeiro falhou (${phone}): ${e?.message}`)
+          const msg = String(e?.message || '')
+          // "Não é cliente desta carteira" NÃO é falha de sistema. A mensagem
+          // de reserva dizia "não consegui consultar, já avisei o gerente" —
+          // mentia duas vezes: não houve erro, e ninguém foi avisado. Quem
+          // recebeu isso ficou esperando um contato que nunca viria.
+          if (/não encontrado|nao encontrado/i.test(msg)) {
+            texto = node.data.textNaoCliente
+              || 'Não encontrei seu cadastro nesta carteira. Se você tem empréstimo com a gente, me chama que eu verifico com a equipe.'
+          }
+          logger.warn(`[Flow] Consulta ao financeiro falhou (${phone}): ${msg}`)
         }
         await enviar(texto)
         const next = outEdges(currentId)[0]

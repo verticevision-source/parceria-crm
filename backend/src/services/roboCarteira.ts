@@ -95,8 +95,9 @@ export function montarRoboCarteira(pixKey: string | null, linkAmanda: string) {
     no('divida', 'consulta', {
       label: 'Dívida (consulta o sistema)',
       consulta: 'divida',
-      textFallback: 'Não consegui consultar seus dados agora. Já avisei o gerente da sua conta, ele te chama por aqui.',
+      textFallback: 'Não consegui consultar seus dados agora. Vou pedir pro gerente da sua conta te passar por aqui.',
       textSemDivida: 'Pelo nosso sistema você não tem empréstimo em aberto. 😊',
+      textNaoCliente: 'Não encontrei seu cadastro nesta carteira. Se você tem empréstimo com a gente, me chama que eu verifico com a equipe.',
     }, 460, 540),
     no('dividaFim', 'message', { label: 'Após a dívida', text: VOLTAR.trim() }, 460, 640),
 
