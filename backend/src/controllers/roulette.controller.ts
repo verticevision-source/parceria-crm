@@ -70,14 +70,20 @@ export class RouletteController {
 
   /** POST /api/roulette/distribute — distribui um lead manualmente (admin) */
   static async distribute(req: AuthRequest, res: Response): Promise<void> {
-    const { contactId, campaignId, source, notes, pipelineStageId } = req.body
+    const { contactId, campaignId, source, notes, pipelineStageId, teamId, teamIds, cityText } = req.body
     if (!contactId) {
       res.status(400).json({ success: false, message: 'contactId é obrigatório' })
       return
     }
-    const result = await RouletteService.distribute({
-      contactId, campaignId, source, notes, pipelineStageId,
-    })
+    // `cityText` roteia por cidade igual o robô faz (mesmo caminho, mesmos
+    // grupos). `teamId`/`teamIds` eram ACEITOS no corpo e descartados aqui em
+    // silêncio: quem distribuía escolhendo um grupo achava que tinha escolhido,
+    // e o lead ia pro sorteio geral.
+    const result = cityText
+      ? await RouletteService.distributeToCity({ contactId, cityText, source, notes })
+      : await RouletteService.distribute({
+          contactId, campaignId, source, notes, pipelineStageId, teamId, teamIds,
+        })
     res.json({ success: true, data: result })
   }
 
