@@ -355,6 +355,21 @@ export class RouletteService {
       whereAgents.teams = { some: { teamId: { in: teamIds } } }
     }
 
+    // ── Atendente de IA com prioridade ───────────────────────────────────────
+    // Quando ligada, a IA fica com TODOS os leads (menos os grupos excluídos,
+    // ex. Brasília) e nem entra no sorteio. Se ela não estiver saudável —
+    // número caído, restrição do WhatsApp, teto de respostas no fim — devolve
+    // null e o lead segue pela roleta normal. É essa queda que evita apostar o
+    // atendimento inteiro num chip só.
+    const { AIBotService } = await import('./aiBot.service')
+    const iaUserId = await AIBotService.atendentePreferencial(teamIds)
+    const iaAgent = iaUserId
+      ? await prisma.rouletteAgent.findUnique({
+          where: { userId: iaUserId },
+          include: { user: { select: { id: true, name: true, email: true } } },
+        })
+      : null
+
     const activeAgents = await prisma.rouletteAgent.findMany({
       where: whereAgents,
       include: { user: { select: { id: true, name: true, email: true } } },
@@ -364,7 +379,7 @@ export class RouletteService {
       ],
     })
 
-    if (activeAgents.length === 0) {
+    if (activeAgents.length === 0 && !iaAgent) {
       const teamMsg = teamIds.length > 0 ? ` no(s) grupo(s) selecionado(s)` : ''
       throw new Error(`Nenhum agente ativo na roleta${teamMsg} no momento`)
     }
@@ -381,7 +396,8 @@ export class RouletteService {
     // Ninguém do grupo tem número conectado: o lead ainda é atribuído (pra não
     // sumir), mas quem chama o cliente precisa saber que NÃO dá pra "puxar a
     // conversa" agora. Sinaliza pro caller segurar a promessa e alertar o admin.
-    const noneOnline = withNumber.length === 0
+    // Com a IA, número conectado já é pré-requisito da checagem de saúde.
+    const noneOnline = iaAgent ? false : withNumber.length === 0
 
     // Aplica peso: expande lista conforme peso de cada agente
     // Ex: weight=2 → aparece 2x na lista, recebe o dobro de leads
@@ -392,8 +408,10 @@ export class RouletteService {
       }
     }
 
-    // Escolhe o primeiro da lista ponderada (já está ordenada por tempo/leads)
-    const chosen = weightedList[0]
+    // A IA tem prioridade; sem ela, o primeiro da lista ponderada (já ordenada
+    // por tempo/leads).
+    const chosen = iaAgent ?? weightedList[0]
+    if (iaAgent) logger.info(`[Roleta] Lead direcionado ao atendente de IA (${iaAgent.user.name})`)
 
     // Reatribui o contato e suas conversas/mensagens ao agente escolhido
     // (assim o atendente passa a ver e responder a conversa no painel)

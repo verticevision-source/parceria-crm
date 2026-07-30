@@ -15,6 +15,8 @@ export interface AIConfigPublic {
   botUserId: string | null
   botPrompt: string | null
   botRequiredQuestions: string | null
+  botPriority: boolean
+  botExcludedTeamIds: string | null
 }
 
 export class AIService {
@@ -39,12 +41,15 @@ export class AIService {
       botUserId: cfg.botUserId,
       botPrompt: cfg.botPrompt,
       botRequiredQuestions: cfg.botRequiredQuestions,
+      botPriority: cfg.botPriority,
+      botExcludedTeamIds: cfg.botExcludedTeamIds,
     }
   }
 
   static async updateConfig(data: {
     provider?: string; apiKey?: string; model?: string; systemPrompt?: string; enabled?: boolean
     botEnabled?: boolean; botUserId?: string | null; botPrompt?: string; botRequiredQuestions?: string
+    botPriority?: boolean; botExcludedTeamIds?: string
   }) {
     const update: any = {}
     if (data.provider) update.provider = data.provider
@@ -56,6 +61,8 @@ export class AIService {
     if (data.botUserId !== undefined) update.botUserId = data.botUserId || null
     if (data.botPrompt !== undefined) update.botPrompt = data.botPrompt
     if (data.botRequiredQuestions !== undefined) update.botRequiredQuestions = data.botRequiredQuestions
+    if (data.botPriority !== undefined) update.botPriority = data.botPriority
+    if (data.botExcludedTeamIds !== undefined) update.botExcludedTeamIds = data.botExcludedTeamIds
     // Só atualiza a key se vier preenchida (evita apagar ao salvar form sem key)
     if (data.apiKey) update.apiKey = data.apiKey
 

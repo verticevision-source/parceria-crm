@@ -55,7 +55,11 @@ const DEBOUNCE_MS = num(process.env.AI_BOT_DEBOUNCE_MS, 6000)
 // Teto: se o cliente não para de digitar, responde de qualquer forma.
 const MAX_WAIT_MS = num(process.env.AI_BOT_MAX_WAIT_MS, 20000)
 const MAX_PER_CONVERSATION = num(process.env.AI_BOT_MAX_REPLIES_PER_CONVERSATION, 25)
-const MAX_PER_DAY = num(process.env.AI_BOT_MAX_REPLIES_PER_DAY, 300)
+// Teto diário: anti-runaway, não orçamento. Subiu de 300 pra 2000 quando a IA
+// passou a receber TODOS os leads — com ~100 clientes/dia e 6 a 10 respostas
+// por conversa, 300 acabava no meio da tarde e ela emudecia com o cliente
+// escrevendo do outro lado.
+const MAX_PER_DAY = num(process.env.AI_BOT_MAX_REPLIES_PER_DAY, 2000)
 const HISTORY_LIMIT = num(process.env.AI_BOT_HISTORY_LIMIT, 30)
 
 interface Pending {
@@ -93,6 +97,58 @@ export class AIBotService {
     if (!userId) return false
     const cfg = await AIBotService.getCfg()
     return !!cfg?.enabled && !!cfg?.botEnabled && cfg?.botUserId === userId
+  }
+
+  /**
+   * A IA deve receber ESTE lead? Só quando ela tem prioridade ligada, o grupo
+   * não está na lista de exceções (Brasília é da Aline) e ela está SAUDÁVEL.
+   *
+   * A checagem de saúde é a rede de segurança: sem ela, mandar 100% dos leads
+   * pra um número só significa que uma restrição do WhatsApp de madrugada
+   * derruba o atendimento inteiro sem ninguém ver. Quando algo aqui falha, a
+   * roleta normal assume e os leads voltam pros vendedores humanos.
+   *
+   * Devolve o userId da IA, ou null com o motivo no log.
+   */
+  static async atendentePreferencial(teamIds: string[]): Promise<string | null> {
+    const cfg = await AIBotService.getCfg()
+    if (!cfg?.enabled || !cfg?.botEnabled || !cfg?.botPriority || !cfg?.botUserId) return null
+
+    const excluidos = String(cfg.botExcludedTeamIds || '')
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean)
+    if (teamIds.some((id) => excluidos.includes(id))) return null
+
+    const recusa = async (motivo: string) => {
+      logger.warn(`[IA-bot] Lead NÃO foi pra IA (${motivo}) — caiu na roleta dos humanos`)
+      return null
+    }
+
+    // Está na roleta e ativa?
+    const agent = await prisma.rouletteAgent.findUnique({
+      where: { userId: cfg.botUserId },
+      select: { isActive: true },
+    })
+    if (!agent?.isActive) return recusa('fora da roleta')
+
+    // Tem número conectado? Sem isso ela não consegue abordar o cliente.
+    const sessao = await prisma.whatsAppSession.findFirst({
+      where: { userId: cfg.botUserId, status: 'CONNECTED' },
+      select: { id: true },
+    })
+    if (!sessao) return recusa('número desconectado')
+
+    // Sobra teto de respostas pro dia? Deixa uma folga de 10%: pegar lead que
+    // ela não vai conseguir responder é pior do que não pegar.
+    const inicioDoDia = new Date()
+    inicioDoDia.setHours(0, 0, 0, 0)
+    const hoje = await prisma.message.count({
+      where: { direction: 'OUT', aiGenerated: true, createdAt: { gte: inicioDoDia } },
+    })
+    if (hoje >= MAX_PER_DAY * 0.9) return recusa(`teto diário perto do limite (${hoje}/${MAX_PER_DAY})`)
+
+    return cfg.botUserId
   }
 
   /** Qual usuário é a IA (independente de estar ligada). */

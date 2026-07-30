@@ -667,6 +667,11 @@ model AIConfig {
   // arrisca apagar sem perceber as regras de segurança (não prometer taxa,
   // não pedir documento, etc.).
   botRequiredQuestions String? @db.Text
+  // A IA recebe TODOS os leads (não entra no sorteio: ela tem prioridade).
+  botPriority  Boolean  @default(false)
+  // Grupos que a IA NÃO atende, separados por vírgula (ex.: o grupo de Brasília).
+  // Lead desses grupos vai pra roleta normal, como sempre.
+  botExcludedTeamIds String? @db.Text
   updatedAt    DateTime @updatedAt @default(now())
 
   @@map("ai_config")
