@@ -16,7 +16,7 @@ function AISettingsTab() {
   const [cfg, setCfg] = useState({
     provider: 'gemini', model: '', systemPrompt: '', enabled: false, hasApiKey: false,
     botEnabled: false, botUserId: '', botPrompt: '', defaultBotPrompt: '',
-    botRequiredQuestions: '',
+    botRequiredQuestions: '', botPriority: false, botExcludedTeamIds: '',
   })
   const [apiKey, setApiKey] = useState('')
   const [loading, setLoading] = useState(true)
@@ -46,6 +46,7 @@ function AISettingsTab() {
         systemPrompt: cfg.systemPrompt, enabled: cfg.enabled,
         botEnabled: cfg.botEnabled, botUserId: cfg.botUserId || null, botPrompt: cfg.botPrompt,
         botRequiredQuestions: cfg.botRequiredQuestions,
+        botPriority: cfg.botPriority, botExcludedTeamIds: cfg.botExcludedTeamIds,
       }
       if (apiKey.trim()) payload.apiKey = apiKey.trim()
       const r = await aiApi.updateConfig(payload)
@@ -168,6 +169,34 @@ function AISettingsTab() {
               Esse usuário precisa ter um número WhatsApp conectado e estar ativo na Roleta
               com as cidades que ele atende.
             </p>
+          </div>
+
+          {/* Interruptor de emergência: se o chip da IA for restringido ou
+              banido, o dono precisa poder devolver os leads pros vendedores
+              sozinho, na hora, sem depender de ninguém. */}
+          <div className="rounded-xl p-3" style={{ background: 'rgba(234,179,8,.06)', border: '1px solid rgba(234,179,8,.25)' }}>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <div onClick={() => setCfg({ ...cfg, botPriority: !cfg.botPriority })}
+                className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer flex-shrink-0 ${cfg.botPriority ? 'bg-warning' : 'bg-bg-tertiary border border-border'}`}>
+                <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full transition-transform shadow-sm ${cfg.botPriority ? 'translate-x-4' : 'translate-x-0.5'}`} />
+              </div>
+              <span className="text-text-secondary text-sm font-medium">A IA recebe TODOS os leads novos</span>
+            </label>
+            <p className="text-xs text-text-muted mt-2">
+              Ligado, todo lead vai pra IA e os vendedores humanos param de receber novos
+              (seguem atendendo o que já pegaram). Se o número dela cair, for restringido ou
+              acabar o limite de respostas do dia, os leads voltam pros vendedores
+              automaticamente. <strong>Desligue aqui</strong> para devolver tudo pra equipe na hora.
+            </p>
+            <label className="block text-xs font-medium text-text-secondary mt-3 mb-1">
+              Grupos que a IA NÃO atende <span className="text-text-muted">(IDs separados por vírgula)</span>
+            </label>
+            <input
+              value={cfg.botExcludedTeamIds || ''}
+              onChange={(e) => setCfg({ ...cfg, botExcludedTeamIds: e.target.value })}
+              className="input-field text-xs font-mono"
+              placeholder="cole aqui o ID do grupo (ex.: o de Brasília)"
+            />
           </div>
 
           <div>
