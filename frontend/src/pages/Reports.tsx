@@ -5,6 +5,7 @@ import {
   BarChart3, TrendingUp, TrendingDown, Users, Target, Award,
   MessageSquare, MapPin, Percent, RefreshCw, Trophy
 } from 'lucide-react'
+import ReportsLeads from './ReportsLeads'
 
 interface ReportData {
   period: { days: number; since: string }
@@ -67,7 +68,7 @@ function MiniBars({ data, keys }: { data: any[]; keys: { key: string; color: str
   )
 }
 
-export default function Reports() {
+function VisaoGeral() {
   const [data, setData] = useState<ReportData | null>(null)
   const [loading, setLoading] = useState(true)
   const [days, setDays] = useState(30)
@@ -94,15 +95,9 @@ export default function Reports() {
   const maxFunnel = Math.max(1, ...data.funnel.map(f => f.count))
 
   return (
-    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
-            <BarChart3 size={22} className="text-primary" /> Relatórios
-          </h1>
-          <p className="text-sm text-text-muted mt-0.5">Desempenho de vendas e atendimento</p>
-        </div>
+    <div className="space-y-6">
+      {/* Período */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
         <div className="flex items-center gap-2">
           <div className="flex gap-1 bg-bg-secondary p-1 rounded-xl">
             {PERIODS.map(p => (
@@ -258,6 +253,41 @@ export default function Reports() {
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Relatórios com duas leituras diferentes:
+ *   "Visão geral" — números consolidados (ranking, funil, conversão).
+ *   "Leads por dia" — a lista crua, cliente por cliente, com telefone e tempo
+ *   de resposta. A primeira responde "como estamos", a segunda "o que houve
+ *   com o Fulano na terça" — e era essa que só dava pra montar na mão.
+ */
+export default function Reports() {
+  const [aba, setAba] = useState<'geral' | 'leads'>('geral')
+
+  return (
+    <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-5">
+      <div>
+        <h1 className="text-xl font-bold text-text-primary flex items-center gap-2">
+          <BarChart3 size={22} className="text-primary" /> Relatórios
+        </h1>
+        <p className="text-sm text-text-muted mt-0.5">Desempenho de vendas e atendimento</p>
+      </div>
+
+      <div className="flex gap-1 bg-bg-secondary p-1 rounded-xl w-fit">
+        {([['geral', 'Visão geral'], ['leads', 'Leads por dia']] as const).map(([id, rotulo]) => (
+          <button key={id} onClick={() => setAba(id)}
+            className={`px-4 h-9 text-xs font-medium rounded-lg transition-all ${
+              aba === id ? 'bg-card shadow text-text-primary' : 'text-text-muted hover:text-text-primary'
+            }`}>
+            {rotulo}
+          </button>
+        ))}
+      </div>
+
+      {aba === 'geral' ? <VisaoGeral /> : <ReportsLeads />}
     </div>
   )
 }

@@ -8,5 +8,6 @@ const router = Router()
 
 // Relatórios são exclusivos do administrador
 router.get('/', authMiddleware, adminMiddleware, asyncHandler(ReportController.getReports))
+router.get('/leads', authMiddleware, adminMiddleware, asyncHandler(ReportController.getLeadsReport))
 
 export default router

@@ -7,7 +7,161 @@ function sinceDate(days: number): Date {
   return d
 }
 
+// O servidor roda em UTC, mas quem lê o relatório pensa em horário de Brasília:
+// "leads de segunda" tem que bater com o que a equipe viu na segunda. Sem esse
+// deslocamento, as 3 primeiras horas de cada dia caem no dia anterior.
+const BRT_OFFSET_H = 3
+
+/** 'YYYY-MM-DD' (dia em Brasília) → instante UTC do começo desse dia. */
+function inicioDoDiaBRT(iso: string): Date {
+  return new Date(new Date(`${iso}T00:00:00.000Z`).getTime() + BRT_OFFSET_H * 3600_000)
+}
+
+/** Fim do dia (exclusivo): começo do dia seguinte. */
+function fimDoDiaBRT(iso: string): Date {
+  return new Date(inicioDoDiaBRT(iso).getTime() + 24 * 3600_000)
+}
+
+/** Média em segundos, ou null quando não houve nenhum par pra medir. */
+function media(valores: number[]): number | null {
+  if (valores.length === 0) return null
+  return Math.round(valores.reduce((s, v) => s + v, 0) / valores.length)
+}
+
+/** Mediana — resiste a um único intervalo gigante (madrugada, fim de semana). */
+function mediana(valores: number[]): number | null {
+  if (valores.length === 0) return null
+  const ord = [...valores].sort((a, b) => a - b)
+  const meio = Math.floor(ord.length / 2)
+  return ord.length % 2 ? ord[meio] : Math.round((ord[meio - 1] + ord[meio]) / 2)
+}
+
 export class ReportService {
+  /**
+   * Leads que caíram para os vendedores num intervalo de dias, um por linha:
+   * cliente, telefone, quando caiu, para quem, e quanto cada lado demorou a
+   * responder.
+   *
+   * O tempo de resposta é medido SÓ a partir do momento em que o lead caiu pro
+   * vendedor — mensagem trocada antes disso é do robô de qualificação, e contar
+   * aquilo como "resposta do vendedor" premiaria ou puniria alguém por conversa
+   * que não era dele.
+   *
+   * Devolve média E mediana: um único intervalo de madrugada (cliente escreve
+   * 2h, vendedor responde 8h) distorce a média inteira, e o número que descreve
+   * o dia normal é a mediana.
+   */
+  static async getLeadsReport(input: {
+    from: string
+    to: string
+    userId?: string
+  }) {
+    const inicio = inicioDoDiaBRT(input.from)
+    const fim = fimDoDiaBRT(input.to)
+    const LIMITE = 1000
+
+    const leads = await prisma.lead.findMany({
+      where: {
+        createdAt: { gte: inicio, lt: fim },
+        ...(input.userId ? { responsibleUserId: input.userId } : {}),
+      },
+      select: {
+        id: true, contactId: true, createdAt: true, source: true, status: true,
+        contact: { select: { name: true, phone: true } },
+        responsibleUser: { select: { id: true, name: true } },
+        pipelineStage: { select: { name: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: LIMITE,
+    })
+
+    if (leads.length === 0) {
+      return {
+        periodo: { from: input.from, to: input.to },
+        total: 0, truncado: false, resumo: null, porDia: [], leads: [],
+      }
+    }
+
+    // Uma consulta só de mensagens pra todos os contatos do período: buscar
+    // conversa por conversa seria uma consulta por lead.
+    const contactIds = [...new Set(leads.map((l) => l.contactId))]
+    const mensagens = await prisma.message.findMany({
+      where: { contactId: { in: contactIds }, createdAt: { gte: inicio } },
+      select: { contactId: true, direction: true, sentAt: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    })
+
+    const porContato = new Map<string, typeof mensagens>()
+    for (const m of mensagens) {
+      if (!m.contactId) continue
+      const arr = porContato.get(m.contactId) || []
+      arr.push(m)
+      porContato.set(m.contactId, arr)
+    }
+
+    const linhas = leads.map((lead) => {
+      const msgs = (porContato.get(lead.contactId) || []).filter(
+        (m) => (m.sentAt ?? m.createdAt).getTime() >= lead.createdAt.getTime()
+      )
+
+      const vendedor: number[] = []
+      const cliente: number[] = []
+      for (let i = 1; i < msgs.length; i++) {
+        const ant = msgs[i - 1], atual = msgs[i]
+        const dt = ((atual.sentAt ?? atual.createdAt).getTime() - (ant.sentAt ?? ant.createdAt).getTime()) / 1000
+        if (ant.direction === 'IN' && atual.direction === 'OUT') vendedor.push(dt)
+        if (ant.direction === 'OUT' && atual.direction === 'IN') cliente.push(dt)
+      }
+
+      return {
+        leadId: lead.id,
+        cliente: lead.contact?.name || lead.contact?.phone || '—',
+        telefone: lead.contact?.phone || '',
+        caiuEm: lead.createdAt.toISOString(),
+        vendedor: lead.responsibleUser?.name || '—',
+        vendedorId: lead.responsibleUser?.id || null,
+        origem: lead.source,
+        etapa: lead.pipelineStage?.name || null,
+        status: lead.status,
+        msgsCliente: msgs.filter((m) => m.direction === 'IN').length,
+        msgsVendedor: msgs.filter((m) => m.direction === 'OUT').length,
+        // null = não houve troca suficiente pra medir (nunca respondeu, ou só
+        // uma ponta falou). Mostrar 0 aqui mentiria: 0s é "respondeu na hora".
+        respostaVendedorSeg: media(vendedor),
+        respostaClienteSeg: media(cliente),
+        _v: vendedor,
+      }
+    })
+
+    // Resumo do período inteiro, juntando os intervalos de todos os leads.
+    const todosVendedor = linhas.flatMap((l) => l._v)
+    const semResposta = linhas.filter((l) => l.msgsVendedor === 0).length
+    const resumo = {
+      totalLeads: linhas.length,
+      semNenhumaRespostaDoVendedor: semResposta,
+      respostaVendedorMediaSeg: media(todosVendedor),
+      respostaVendedorMedianaSeg: mediana(todosVendedor),
+    }
+
+    // Quantos leads por dia (no fuso de Brasília).
+    const diaBRT = (iso: string) =>
+      new Date(new Date(iso).getTime() - BRT_OFFSET_H * 3600_000).toISOString().slice(0, 10)
+    const mapaDia = new Map<string, number>()
+    for (const l of linhas) mapaDia.set(diaBRT(l.caiuEm), (mapaDia.get(diaBRT(l.caiuEm)) || 0) + 1)
+    const porDia = [...mapaDia.entries()]
+      .map(([dia, total]) => ({ dia, total }))
+      .sort((a, b) => a.dia.localeCompare(b.dia))
+
+    return {
+      periodo: { from: input.from, to: input.to },
+      total: linhas.length,
+      truncado: linhas.length === LIMITE,
+      resumo,
+      porDia,
+      leads: linhas.map(({ _v, ...resto }) => resto),
+    }
+  }
+
   /**
    * Relatório consolidado. `days` = janela (7, 30, 90...).
    */
