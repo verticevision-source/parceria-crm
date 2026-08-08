@@ -18,5 +18,6 @@ router.patch('/:id/activate', asyncHandler(UserController.activate))
 router.patch('/:id/deactivate', asyncHandler(UserController.deactivate))
 router.delete('/:id', asyncHandler(UserController.delete))
 router.patch('/:id/ai', asyncHandler(UserController.setAi))
+router.patch('/:id/role', asyncHandler(UserController.setRole))
 
 export default router

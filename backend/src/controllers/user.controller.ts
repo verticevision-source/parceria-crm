@@ -79,4 +79,18 @@ export class UserController {
     const user = await UserService.setAiEnabled(req.params.id, !!enabled)
     res.json({ success: true, data: user })
   }
+
+  static async setRole(req: AuthRequest, res: Response): Promise<void> {
+    const { role, manterComoVendedor } = req.body
+    if (!['ADMIN', 'USER', 'GERENTE'].includes(role)) {
+      res.status(400).json({ success: false, message: 'Papel inválido' })
+      return
+    }
+    const user = await UserService.setRole(
+      req.params.id,
+      role,
+      manterComoVendedor === undefined ? undefined : !!manterComoVendedor
+    )
+    res.json({ success: true, data: user })
+  }
 }

@@ -58,22 +58,28 @@ export class UserService {
     }
     const managers = data.managers || []
 
-    let criados = 0, promovidos = 0, carteiras = 0, ignoradosAdmin = 0
+    let criados = 0, promovidos = 0, carteiras = 0, ignoradosAdmin = 0, mantidosVendedor = 0
     for (const m of managers) {
       if (!m.email) continue
 
       let user = await prisma.user.findFirst({
         where: { email: { equals: m.email, mode: 'insensitive' } },
-        select: { id: true, role: true },
+        select: { id: true, role: true, manterComoVendedor: true },
       })
 
       if (!user) {
         const passwordHash = await bcrypt.hash(randomBytes(24).toString('hex'), authConfig.bcryptRounds)
         user = await prisma.user.create({
           data: { name: m.name, email: m.email.toLowerCase(), passwordHash, role: 'GERENTE' },
-          select: { id: true, role: true },
+          select: { id: true, role: true, manterComoVendedor: true },
         })
         criados++
+      } else if (user.role === 'USER' && user.manterComoVendedor) {
+        // Gerencia carteira no financeiro E vende aqui. Promover tiraria ela da
+        // roleta (gerente não recebe lead) e ninguém ligaria uma coisa na outra.
+        // As carteiras continuam sendo vinculadas logo abaixo — o que muda é só
+        // o papel na tela.
+        mantidosVendedor++
       } else if (user.role === 'USER') {
         await prisma.user.update({ where: { id: user.id }, data: { role: 'GERENTE' } })
         promovidos++
@@ -96,7 +102,7 @@ export class UserService {
       })
     }
 
-    return { total: managers.length, criados, promovidos, carteiras, ignoradosAdmin }
+    return { total: managers.length, criados, promovidos, carteiras, ignoradosAdmin, mantidosVendedor }
   }
 
   static async findAll() {
@@ -199,6 +205,32 @@ export class UserService {
       where: { id },
       data: { aiEnabled },
       select: { id: true, name: true, aiEnabled: true },
+    })
+  }
+
+  /**
+   * Troca o papel do usuário.
+   *
+   * `manterComoVendedor` é a trava contra o sync com o financeiro: quem
+   * gerencia carteira LÁ é promovido a GERENTE aqui, e gerente não entra na
+   * roleta. Quem faz as duas coisas (o caso da Rosi: 2 carteiras no financeiro
+   * e vendendo aqui) precisa da trava, senão cada "Sincronizar equipe" tira a
+   * pessoa da roleta de novo e o sintoma só aparece dias depois.
+   */
+  static async setRole(id: string, role: 'ADMIN' | 'USER' | 'GERENTE', manterComoVendedor?: boolean) {
+    const user = await prisma.user.findUnique({ where: { id }, select: { role: true } })
+    if (!user) throw new Error('Usuário não encontrado')
+
+    // Rebaixar o último admin trancaria todo mundo pra fora da administração.
+    if (user.role === 'ADMIN' && role !== 'ADMIN') {
+      const activeAdmins = await prisma.user.count({ where: { role: 'ADMIN', isActive: true } })
+      if (activeAdmins <= 1) throw new Error('Não é possível rebaixar o último administrador')
+    }
+
+    return prisma.user.update({
+      where: { id },
+      data: { role, ...(manterComoVendedor === undefined ? {} : { manterComoVendedor }) },
+      select: { id: true, name: true, email: true, role: true, manterComoVendedor: true },
     })
   }
 
